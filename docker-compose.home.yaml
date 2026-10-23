@@ -1,0 +1,118 @@
+# Home stack, for testing and presentations (design §9.3): database, collector, dashboard and
+# daily backups, using the user's production broker. That Mosquitto already runs on the same
+# Coolify server and answers as `mosquitto` on the `coolify` network, with a single login for
+# everyone, stations included (MQTT_AUTH_MODE=shared, design §3.10).
+# Coolify: "Docker Compose" resource with Docker Compose Location /docker-compose.home.yaml.
+# The VPS (production) uses docker-compose.yaml, with a broker of its own.
+# Variables: .env.home.example. Guide: docs/deploy.md.
+#
+# The services carry a `wx-` prefix: the collector and the dashboard join the shared `coolify`
+# network, where plain names like `postgres` or `dashboard` may belong to other stacks.
+
+services:
+  wx-postgres:
+    image: postgres:18.6-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: weather
+      POSTGRES_DB: weather
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+    volumes:
+      # Postgres 18 images keep data under /var/lib/postgresql/<major>/docker
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "weather", "-d", "weather"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+    logging:
+      driver: json-file
+      options: { max-size: 10m, max-file: "5" }
+
+  wx-collector:
+    build:
+      context: .
+      target: collector
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgres://weather:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@wx-postgres:5432/weather
+      MQTT_URL: ${MQTT_URL:-mqtt://mosquitto:1883}
+      MQTT_COLLECTOR_USERNAME: ${MQTT_USERNAME:?set MQTT_USERNAME}
+      MQTT_COLLECTOR_PASSWORD: ${MQTT_PASSWORD:?set MQTT_PASSWORD}
+      # The broker keeps the collector's persistent session under this id: unique among the
+      # other systems that use the same broker.
+      MQTT_COLLECTOR_CLIENT_ID: wx-collector
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    networks:
+      - default
+      - coolify
+    depends_on:
+      wx-postgres:
+        condition: service_healthy
+    logging:
+      driver: json-file
+      options: { max-size: 10m, max-file: "5" }
+
+  wx-dashboard:
+    build:
+      context: .
+      target: dashboard
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgres://weather:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@wx-postgres:5432/weather
+      MQTT_URL: ${MQTT_URL:-mqtt://mosquitto:1883}
+      MQTT_AUTH_MODE: shared
+      MQTT_USERNAME: ${MQTT_USERNAME:?set MQTT_USERNAME}
+      MQTT_PASSWORD: ${MQTT_PASSWORD:?set MQTT_PASSWORD}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:?set ADMIN_EMAIL}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?set ADMIN_PASSWORD}
+      ADMIN_NAME: ${ADMIN_NAME:-Administrador}
+      APP_URL: ${APP_URL:?set APP_URL}
+      # What the stations use to reach the broker from wherever they are (DDNS + port forward).
+      PUBLIC_MQTT_HOST: ${PUBLIC_MQTT_HOST:?set PUBLIC_MQTT_HOST}
+      PUBLIC_MQTT_PORT: ${PUBLIC_MQTT_PORT:-1883}
+      PUBLIC_MQTT_TLS: "false"
+      # Coolify's proxy (behind the Cloudflare tunnel) is in front of the dashboard.
+      TRUST_PROXY: "true"
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    # Reached only through the proxy: Coolify routes the domain to this port.
+    expose:
+      - "3000"
+    networks:
+      - default
+      - coolify
+    depends_on:
+      wx-postgres:
+        condition: service_healthy
+    logging:
+      driver: json-file
+      options: { max-size: 10m, max-file: "5" }
+
+  wx-backup:
+    build: ./infra/backup
+    restart: unless-stopped
+    environment:
+      PGHOST: wx-postgres
+      PGUSER: weather
+      PGDATABASE: weather
+      PGPASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      TZ: ${BACKUP_TZ:-America/Sao_Paulo}
+      BACKUP_HOUR: ${BACKUP_HOUR:-3}
+      # The broker and its logins belong to another stack: only the database is backed up here.
+      BROKER_FILE: ""
+    volumes:
+      - backups:/backups
+    depends_on:
+      wx-postgres:
+        condition: service_healthy
+    logging:
+      driver: json-file
+      options: { max-size: 10m, max-file: "5" }
+
+networks:
+  coolify:
+    external: true
+
+volumes:
+  pgdata:
+  backups:

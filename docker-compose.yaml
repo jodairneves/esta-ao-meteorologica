@@ -1,4 +1,6 @@
-# Production stack (design §9): Postgres, Mosquitto, collector, dashboard and daily backups.
+# Production stack on the VPS (design §9.2): Postgres, Mosquitto with a login per station,
+# collector, dashboard and daily backups. The home stack, which uses the user's own broker, is
+# docker-compose.home.yaml.
 # Coolify: a "Docker Compose" resource pointing at this repository (this is the file it looks for).
 # Without Coolify: docker compose --env-file .env up -d --build
 # Variables: .env.production.example. Guide: docs/deploy.md.

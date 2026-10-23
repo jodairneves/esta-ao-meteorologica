@@ -12,7 +12,8 @@ BACKUP_DIR=${BACKUP_DIR:-/backups}
 BACKUP_HOUR=${BACKUP_HOUR:-3}
 KEEP_DAILY=${KEEP_DAILY:-14}
 KEEP_WEEKLY=${KEEP_WEEKLY:-8}
-BROKER_FILE=${BROKER_FILE:-/mosquitto-data/dynamic-security.json}
+# Empty: no broker logins to copy (the broker belongs to another stack).
+BROKER_FILE=${BROKER_FILE-/mosquitto-data/dynamic-security.json}
 
 log() { echo "$(date '+%Y-%m-%dT%H:%M:%S%z') $*"; }
 
@@ -37,7 +38,9 @@ backup() {
     return 1
   fi
   mv "$dump.partial" "$dump"
-  if [ -f "$BROKER_FILE" ]; then
+  if [ -z "$BROKER_FILE" ]; then
+    :
+  elif [ -f "$BROKER_FILE" ]; then
     cp "$BROKER_FILE" "$BACKUP_DIR/daily/mosquitto-$day.json"
   else
     log "aviso: $BROKER_FILE não encontrado; só o banco foi copiado"

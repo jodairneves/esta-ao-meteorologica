@@ -1,0 +1,57 @@
+# Rehearsal of docker-compose.home.yaml on a development machine (docs/deploy.md, "Ensaio local"):
+# a broker configured like the user's production one (a single login, no ACL) answers as
+# `mosquitto` on a local `coolify` network and on 127.0.0.1:1884; the dashboard is on
+# http://localhost:3400. Variables in .env.home-rehearsal (git-ignored).
+#   docker network create coolify        # once; Coolify servers already have it
+#   docker compose -p wx-home-rehearsal --env-file .env.home-rehearsal -f docker-compose.home.yaml \
+#     -f infra/compose.home-rehearsal.yml up -d --build --wait
+services:
+  wx-dashboard:
+    ports:
+      - "127.0.0.1:3400:3000"
+
+  mosquitto:
+    image: eclipse-mosquitto:2.1.2-alpine
+    restart: unless-stopped
+    environment:
+      MQTT_USER: ${MQTT_USERNAME:?set MQTT_USERNAME}
+      MQTT_PASSWORD: ${MQTT_PASSWORD:?set MQTT_PASSWORD}
+    ports:
+      - "127.0.0.1:1884:1883"
+    networks:
+      coolify:
+        aliases:
+          - mosquitto
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - 'mosquitto_sub -h 127.0.0.1 -p 1883 -u "$$MQTT_USER" -P "$$MQTT_PASSWORD" -t healthcheck -E -W 5 || exit 1'
+      interval: 10s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    # Same configuration as the production broker: the password file is rebuilt on every start.
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        set -e
+        cat > /mosquitto/config/mosquitto.conf <<'CONF'
+        listener 1883
+        protocol mqtt
+        allow_anonymous false
+        password_file /mosquitto/config/passwords
+        persistence true
+        persistence_location /mosquitto/data/
+        log_dest stdout
+        log_type error
+        log_type warning
+        log_type notice
+        log_type information
+        connection_messages true
+        CONF
+        rm -f /mosquitto/config/passwords
+        mosquitto_passwd -b -c /mosquitto/config/passwords "$$MQTT_USER" "$$MQTT_PASSWORD"
+        chown mosquitto:mosquitto /mosquitto/config/passwords
+        chmod 0600 /mosquitto/config/passwords
+        exec mosquitto -c /mosquitto/config/mosquitto.conf
