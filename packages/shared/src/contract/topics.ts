@@ -13,6 +13,10 @@ export const STATION_PUBLISHED_KINDS = [
 ] as const satisfies readonly MessageKind[];
 export type StationPublishedKind = (typeof STATION_PUBLISHED_KINDS)[number];
 
+export function isStationPublishedKind(kind: MessageKind): kind is StationPublishedKind {
+  return (STATION_PUBLISHED_KINDS as readonly string[]).includes(kind);
+}
+
 /** Station code: 3–32 chars, lowercase letters, digits and inner hyphens. Also the MQTT username. */
 export const STATION_CODE_PATTERN = /^[a-z0-9][a-z0-9-]{1,30}[a-z0-9]$/;
 
@@ -49,7 +53,7 @@ export const COLLECTOR_TOPIC_FILTERS: readonly string[] = STATION_PUBLISHED_KIND
 export function suggestStationCode(name: string): string {
   const slug = name
     .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
+    .replace(/\p{M}/gu, '')
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
