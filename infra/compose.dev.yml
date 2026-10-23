@@ -29,7 +29,9 @@ services:
       # Used by the Dynamic Security plugin to create the "admin" client on first start.
       MOSQUITTO_DYNSEC_PASSWORD: ${MOSQUITTO_DYNSEC_PASSWORD:?set MOSQUITTO_DYNSEC_PASSWORD in .env}
     ports:
-      - "127.0.0.1:${DEV_MQTT_PORT:-1883}:1883"
+      # DEV_MQTT_BIND=0.0.0.0 exposes the broker to the local network (bench test of a real
+      # D1 mini); keep the default otherwise.
+      - "${DEV_MQTT_BIND:-127.0.0.1}:${DEV_MQTT_PORT:-1883}:1883"
     volumes:
       - ./mosquitto/mosquitto.dev.conf:/mosquitto/config/mosquitto.conf:ro
       - mosquitto-data:/mosquitto/data
