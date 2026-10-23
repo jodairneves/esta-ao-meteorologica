@@ -77,6 +77,7 @@ Sistema de monitoramento de estações meteorológicas DIY (Wemos D1 mini/ESP826
 - **Escrita de arquivos por ferramenta:** escapes `\uXXXX` dentro do conteúdo viram o caractere literal (invisível no caso de BOM e acentos combinantes). Use `String.fromCharCode(0xfeff)` ou classes como `\p{M}`.
 - **Dashboard em dev:** servidor em `127.0.0.1:3300` (`HOST`/`PORT`; o padrão `0.0.0.0` é para containers); `APP_URL=http://localhost:5173` (Vite) é a origem aceita pelo CSRF; o proxy do Vite aponta para `127.0.0.1`.
 - **Web — MapLibre 6:** o worker é um arquivo separado; `components/map/base-map.ts` chama `setWorkerUrl()` com o `?url` do Vite. O CSS do MapLibre não está em `@layer` e por isso vence os utilitários do Tailwind 4 (que estão): o contêiner entregue ao mapa ganha `position: relative` e perde o `absolute inset-0` (o mapa fica com altura 0). A caixa posicionada fica num wrapper; os controles são tematizados em `map-theme.css`, importado depois do CSS do MapLibre.
+- **Web — WebGL2 é opcional:** o mapa (MapLibre 6) e as cenas 3D (three) exigem WebGL2. Sem ele (aceleração gráfica desligada ou GPU bloqueada pelo navegador), o construtor do MapLibre lança `GPUInitializationError`, que derrubava a tela inteira. Agora `supportsWebGL2()` (`lib/webgl.ts`) decide antes, a criação do mapa fica em `try/catch`, há `ErrorBoundary` em volta e o aviso `NoWebGL` ocupa o lugar. O projeto `no-webgl` do Playwright (`--disable-3d-apis`) cobre esse caminho.
 - **Web — rótulos 3D:** o `<Html>` do drei cria uma raiz React por rótulo, e o StrictMode do React 19 desmonta raízes durante o render ("synchronously unmount a root"), perdendo rótulos. Use `ScreenAnchors` (`components/station/scene/screen-anchors.tsx`): elementos DOM comuns posicionados por projeção a cada quadro.
 - **Web — three 0.186 / R3F 9:** `shadows` sem valor pede PCFSoft, que foi removido; use `shadows="percentage"`. Em `frameloop="demand"` (reduzir movimento) é preciso `invalidate()` quando só o DOM muda.
 - **Web — ECharts:** as cores vêm de variáveis CSS lidas em tempo de execução (`chartTokens()`), então o `theme` precisa estar nas dependências do `useMemo` da opção (com `biome-ignore` justificado). Séries de estações em economia são esparsas: na comparação cada linha tem o próprio eixo de tempo (`LineSeries.t`) e as quebras usam o passo típico da própria série (`withGaps`).
@@ -200,3 +201,13 @@ Sistema de monitoramento de estações meteorológicas DIY (Wemos D1 mini/ESP826
   - Tempo real conferido: cada leitura dispara um refetch via SSE.
 - **Correções encontradas no teste:** altura zero do mapa (CSS do MapLibre), rótulos 3D perdidos (drei `<Html>`), estação esparsa invisível na comparação, rótulos repetidos no eixo da bateria e corrida no redirecionamento depois da troca de senha.
 - **No total:** 157 testes unitários, 54 de integração (não reexecutados nesta fase, que não alterou servidor, coletor nem pacotes) e 10 E2E.
+
+### 2026-10-23 — Correção: navegador sem WebGL2
+- **Problema relatado pelo usuário:** logo após o login, a tela inteira caía ("Não foi possível abrir esta tela") com `GPUInitializationError: WebGL2 is required`. O navegador estava sem aceleração gráfica, e o erro do mapa derrubava a página.
+- **Correção:**
+  - Detecção de WebGL2 antes de criar o mapa ou as cenas.
+  - Aviso com orientação no lugar do mapa da visão geral, do mapa do cadastro, da cena 3D da estação e da opção "3D" do mapa de calor.
+  - `ErrorBoundary` em volta dos mapas.
+  - O resto da tela (lista de estações, valores ao vivo, gráficos) continua funcionando.
+- `hydrateFallbackElement` no roteador (fim do aviso `HydrateFallback` no console).
+- **Testes:** novo E2E `no-webgl` (11 no total).

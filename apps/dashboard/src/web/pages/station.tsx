@@ -1,4 +1,4 @@
-import { Box, Download, MapPinOff, Pencil } from 'lucide-react';
+import { Download, MapPinOff, Pencil } from 'lucide-react';
 import { lazy, Suspense, useMemo } from 'react';
 import { Link, useParams } from 'react-router';
 import { API_PREFIX, type LatestResponse, type StationDetail } from '../../common/api';
@@ -15,6 +15,7 @@ import { StationCharts } from '../components/station/station-charts';
 import { contactText } from '../components/station/station-rack';
 import { ErrorBoundary } from '../components/ui/error-boundary';
 import { EmptyState, ErrorNotice, PageHeader } from '../components/ui/misc';
+import { NoWebGL } from '../components/ui/no-webgl';
 import { StatusPill } from '../components/ui/status';
 import { cssVar } from '../lib/css';
 import { formatNumber, formatTime, msToKmh, withUnit } from '../lib/format';
@@ -24,6 +25,7 @@ import { stationStatusLook, type Tone } from '../lib/status';
 import { sunPosition } from '../lib/sun';
 import { useTheme } from '../lib/theme';
 import { useNow } from '../lib/time';
+import { supportsWebGL2 } from '../lib/webgl';
 
 const StationScene = lazy(() => import('../components/station/scene/station-scene'));
 
@@ -63,6 +65,13 @@ function SceneSection({
   const wind = live ? (reading?.windSpeedMs ?? null) : null;
   const rainRate = live ? (latest?.derived.rainRateMmH ?? null) : null;
 
+  const webgl = supportsWebGL2();
+  const noScene = (
+    <NoWebGL title="Cena 3D indisponível neste navegador">
+      Os valores ao vivo continuam ao lado.
+    </NoWebGL>
+  );
+
   const daylight =
     sun.elevation > 6
       ? 'dia'
@@ -77,40 +86,40 @@ function SceneSection({
       aria-label="Estação em 3D"
       className="panel relative aspect-[4/3] overflow-hidden bg-sunken sm:aspect-[16/10] xl:aspect-auto xl:min-h-[540px]"
     >
-      <ErrorBoundary
-        fallback={
-          <EmptyState icon={Box} title="Cena 3D indisponível" className="h-full justify-center">
-            Este navegador não conseguiu ativar o WebGL. Os valores ao vivo continuam ao lado.
-          </EmptyState>
-        }
-      >
-        <Suspense fallback={<div className="absolute inset-0 animate-pulse bg-sunken" />}>
-          <StationScene
-            sun={sun}
-            latitude={latitude}
-            windMs={wind}
-            windMsPerHz={station.windMsPerHz}
-            rainRateMmH={rainRate}
-            humidityPct={reading?.humidityPct ?? null}
-            ledColor={ledColor}
-            ledDim={station.status === 'sleeping' || station.status === 'inactive'}
-            animate={!reducedMotion}
-            labels={{
-              anemometer: `Vento ${withUnit(reading?.windSpeedMs == null ? null : msToKmh(reading.windSpeedMs), 'km/h', 0)}`,
-              shield: `${withUnit(reading?.temperatureC, '°C', 1)}, ${withUnit(reading?.humidityPct, '%', 0)}`,
-              gauge: `Chuva hoje ${withUnit(latest?.rain.todayMm, 'mm', 1)}`,
-            }}
-          />
-        </Suspense>
-      </ErrorBoundary>
+      {!webgl ? (
+        noScene
+      ) : (
+        <ErrorBoundary fallback={noScene}>
+          <Suspense fallback={<div className="absolute inset-0 animate-pulse bg-sunken" />}>
+            <StationScene
+              sun={sun}
+              latitude={latitude}
+              windMs={wind}
+              windMsPerHz={station.windMsPerHz}
+              rainRateMmH={rainRate}
+              humidityPct={reading?.humidityPct ?? null}
+              ledColor={ledColor}
+              ledDim={station.status === 'sleeping' || station.status === 'inactive'}
+              animate={!reducedMotion}
+              labels={{
+                anemometer: `Vento ${withUnit(reading?.windSpeedMs == null ? null : msToKmh(reading.windSpeedMs), 'km/h', 0)}`,
+                shield: `${withUnit(reading?.temperatureC, '°C', 1)}, ${withUnit(reading?.humidityPct, '%', 0)}`,
+                gauge: `Chuva hoje ${withUnit(latest?.rain.todayMm, 'mm', 1)}`,
+              }}
+            />
+          </Suspense>
+        </ErrorBoundary>
+      )}
       <div className="pointer-events-none absolute inset-x-3 bottom-3 flex flex-wrap items-end justify-between gap-2">
         <p className="rounded-md bg-panel/80 px-2.5 py-1 text-[13px] text-ink-2 backdrop-blur-sm">
           {formatTime(now, station.timezone)} na estação, {daylight}
           {station.latitude === null && ' (local não informado)'}
         </p>
-        <p className="hidden rounded-md bg-panel/80 px-2.5 py-1 text-[13px] text-ink-3 backdrop-blur-sm sm:block">
-          Arraste para girar
-        </p>
+        {webgl && (
+          <p className="hidden rounded-md bg-panel/80 px-2.5 py-1 text-[13px] text-ink-3 backdrop-blur-sm sm:block">
+            Arraste para girar
+          </p>
+        )}
       </div>
     </section>
   );

@@ -1,7 +1,7 @@
 import type { ComponentType } from 'react';
 import { createBrowserRouter } from 'react-router';
 import { RouteError } from './route-error';
-import { RequireAdmin, RequireSession } from './session';
+import { RequireAdmin, RequireSession, Splash } from './session';
 import { AppShell } from './shell';
 
 /** Pages are split into their own chunks; the router keeps the old page until one loads. */
@@ -11,6 +11,8 @@ const page = (load: () => Promise<{ default: ComponentType }>) => () =>
 export const router = createBrowserRouter([
   {
     errorElement: <RouteError />,
+    // Shown while the first page's chunk loads on a cold start.
+    hydrateFallbackElement: <Splash />,
     children: [
       { path: '/login', lazy: page(() => import('../pages/login')) },
       {

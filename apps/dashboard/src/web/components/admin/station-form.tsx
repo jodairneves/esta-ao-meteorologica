@@ -5,6 +5,7 @@ import type { StationDetail } from '../../../common/api';
 import { ApiError } from '../../api/client';
 import { formatNumber } from '../../lib/format';
 import { Button } from '../ui/button';
+import { ErrorBoundary } from '../ui/error-boundary';
 import { Field, Input, Select } from '../ui/field';
 
 const LocationPicker = lazy(() => import('../map/location-picker'));
@@ -224,19 +225,27 @@ export function StationForm({
           Clique no mapa ou arraste o marcador. A localização acende o mapa da visão geral e o céu
           da cena 3D.
         </p>
-        <Suspense fallback={<div className="h-72 animate-pulse rounded-md bg-sunken" />}>
-          <LocationPicker
-            latitude={typeof latitude === 'number' ? latitude : null}
-            longitude={typeof longitude === 'number' ? longitude : null}
-            onChange={(lat, lon) =>
-              setValues((current) => ({
-                ...current,
-                latitude: String(lat),
-                longitude: String(lon),
-              }))
-            }
-          />
-        </Suspense>
+        <ErrorBoundary
+          fallback={
+            <p className="rounded-md border border-hairline px-4 py-6 text-center text-sm text-ink-2">
+              Não foi possível mostrar o mapa. Digite a latitude e a longitude nos campos abaixo.
+            </p>
+          }
+        >
+          <Suspense fallback={<div className="h-72 animate-pulse rounded-md bg-sunken" />}>
+            <LocationPicker
+              latitude={typeof latitude === 'number' ? latitude : null}
+              longitude={typeof longitude === 'number' ? longitude : null}
+              onChange={(lat, lon) =>
+                setValues((current) => ({
+                  ...current,
+                  latitude: String(lat),
+                  longitude: String(lon),
+                }))
+              }
+            />
+          </Suspense>
+        </ErrorBoundary>
         <div className="grid gap-4 sm:grid-cols-3">
           <Field label="Latitude" error={errors.latitude}>
             {(props) => (

@@ -7,6 +7,7 @@ import { formatDay, formatNumber } from '../../lib/format';
 import { useReducedMotion } from '../../lib/motion';
 import { QUANTITIES } from '../../lib/quantities';
 import { useTheme } from '../../lib/theme';
+import { supportsWebGL2 } from '../../lib/webgl';
 import { ChartPanel } from '../charts/chart-panel';
 import { HourDayHeatmap } from '../charts/heatmap';
 import { ErrorBoundary } from '../ui/error-boundary';
@@ -38,6 +39,7 @@ export function HeatmapSection({
 }) {
   const [metric, setMetric] = useState<HeatmapMetric>('temperature');
   const [view, setView] = useState<View>('flat');
+  const webgl = supportsWebGL2();
   const heatmap = useHeatmap(code, metric, from, to);
   const { theme } = useTheme();
   const reducedMotion = useReducedMotion();
@@ -58,15 +60,18 @@ export function HeatmapSection({
             options={HEATMAP_METRICS}
             onChange={setMetric}
           />
-          <Segmented
-            label="Visualização"
-            value={view}
-            options={[
-              { value: 'flat', label: 'Plano' },
-              { value: '3d', label: '3D' },
-            ]}
-            onChange={setView}
-          />
+          {/* The 3D version needs WebGL2; without it only the flat heatmap is offered. */}
+          {webgl && (
+            <Segmented
+              label="Visualização"
+              value={view}
+              options={[
+                { value: 'flat', label: 'Plano' },
+                { value: '3d', label: '3D' },
+              ]}
+              onChange={setView}
+            />
+          )}
         </div>
       }
       table={
@@ -92,7 +97,7 @@ export function HeatmapSection({
           Não há leituras suficientes neste período.
         </EmptyState>
       )}
-      {data && data.cells.length > 0 && view === 'flat' && (
+      {data && data.cells.length > 0 && (view === 'flat' || !webgl) && (
         <HourDayHeatmap
           days={data.days}
           cells={data.cells}
@@ -102,7 +107,7 @@ export function HeatmapSection({
           label={`Mapa de calor de ${spec.label.toLowerCase()} por hora do dia e dia`}
         />
       )}
-      {data && data.cells.length > 0 && view === '3d' && (
+      {data && data.cells.length > 0 && view === '3d' && webgl && (
         <div className="h-[420px] overflow-hidden rounded-md" key={theme}>
           <ErrorBoundary
             fallback={

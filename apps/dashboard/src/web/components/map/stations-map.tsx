@@ -7,7 +7,9 @@ import { cssVar } from '../../lib/css';
 import { withUnit } from '../../lib/format';
 import { stationStatusLook } from '../../lib/status';
 import { useTheme } from '../../lib/theme';
+import { supportsWebGL2 } from '../../lib/webgl';
 import { EmptyState } from '../ui/misc';
+import { NoWebGL } from '../ui/no-webgl';
 import { circlePolygon, createBaseMap, metersPerPixel } from './base-map';
 import { MAP_METRICS, type MapMetric } from './map-metrics';
 
@@ -98,63 +100,75 @@ export default function StationsMap({
   const scaleRef = useRef<Scale | null>(null);
   const latest = useRef({ stations: located(stations), metric, onSelect });
   latest.current = { stations: located(stations), metric, onSelect };
-  const [failed, setFailed] = useState(false);
+  const [failed, setFailed] = useState<'style' | 'webgl' | null>(null);
   const [ready, setReady] = useState(false);
   const hasPoints = latest.current.stations.length > 0;
+  const webgl = supportsWebGL2();
 
   // One map per theme (each theme has its own base style).
   useEffect(() => {
-    if (!container.current || !hasPoints) return;
+    if (!container.current || !hasPoints || !webgl) return;
     setReady(false);
-    setFailed(false);
+    setFailed(null);
     const points = latest.current.stations;
     const bounds = new LngLatBounds();
     for (const station of points) bounds.extend([station.longitude, station.latitude]);
 
-    const map = createBaseMap(
-      container.current,
-      theme,
-      (loaded) => {
-        loaded.addSource('station-columns', {
-          type: 'geojson',
-          data: { type: 'FeatureCollection', features: [] },
-        });
-        loaded.addLayer({
-          id: 'station-columns',
-          type: 'fill-extrusion',
-          source: 'station-columns',
-          paint: {
-            'fill-extrusion-color': ['get', 'color'],
-            'fill-extrusion-height': ['get', 'height'],
-            'fill-extrusion-base': 0,
-            'fill-extrusion-opacity': 0.92,
-            'fill-extrusion-vertical-gradient': true,
+    let map: MapLibre;
+    try {
+      map = createBaseMap(
+        container.current,
+        theme,
+        (loaded) => {
+          loaded.addSource('station-columns', {
+            type: 'geojson',
+            data: { type: 'FeatureCollection', features: [] },
+          });
+          loaded.addLayer({
+            id: 'station-columns',
+            type: 'fill-extrusion',
+            source: 'station-columns',
+            paint: {
+              'fill-extrusion-color': ['get', 'color'],
+              'fill-extrusion-height': ['get', 'height'],
+              'fill-extrusion-base': 0,
+              'fill-extrusion-opacity': 0.92,
+              'fill-extrusion-vertical-gradient': true,
+            },
+          });
+          loaded.on('click', 'station-columns', (event) => {
+            const code = event.features?.[0]?.properties?.code;
+            if (typeof code === 'string') latest.current.onSelect(code);
+          });
+          loaded.on('mouseenter', 'station-columns', () => {
+            loaded.getCanvas().style.cursor = 'pointer';
+          });
+          loaded.on('mouseleave', 'station-columns', () => {
+            loaded.getCanvas().style.cursor = '';
+          });
+          setReady(true);
+        },
+        {
+          bounds: points.length > 1 ? bounds : undefined,
+          center:
+            points.length === 1 ? [points[0]?.longitude ?? 0, points[0]?.latitude ?? 0] : undefined,
+          zoom: points.length === 1 ? 14 : undefined,
+          fitBoundsOptions: {
+            padding: { top: 110, bottom: 60, left: 80, right: 160 },
+            maxZoom: 14,
           },
-        });
-        loaded.on('click', 'station-columns', (event) => {
-          const code = event.features?.[0]?.properties?.code;
-          if (typeof code === 'string') latest.current.onSelect(code);
-        });
-        loaded.on('mouseenter', 'station-columns', () => {
-          loaded.getCanvas().style.cursor = 'pointer';
-        });
-        loaded.on('mouseleave', 'station-columns', () => {
-          loaded.getCanvas().style.cursor = '';
-        });
-        setReady(true);
-      },
-      {
-        bounds: points.length > 1 ? bounds : undefined,
-        center:
-          points.length === 1 ? [points[0]?.longitude ?? 0, points[0]?.latitude ?? 0] : undefined,
-        zoom: points.length === 1 ? 14 : undefined,
-        fitBoundsOptions: { padding: { top: 110, bottom: 60, left: 80, right: 160 }, maxZoom: 14 },
-        pitch: 52,
-        bearing: -14,
-        maxPitch: 70,
-        onStyleError: () => setFailed(true),
-      },
-    );
+          pitch: 52,
+          bearing: -14,
+          maxPitch: 70,
+          onStyleError: () => setFailed('style'),
+        },
+      );
+    } catch (error) {
+      // WebGL2 can still be refused at creation time (GPU reset, driver blocklist).
+      console.warn('map unavailable', error);
+      setFailed('webgl');
+      return;
+    }
     mapRef.current = map;
     const center = map.getCenter();
     const mpp = metersPerPixel(center.lat, map.getZoom());
@@ -170,7 +184,7 @@ export default function StationsMap({
       map.remove();
       mapRef.current = null;
     };
-  }, [theme, hasPoints]);
+  }, [theme, hasPoints, webgl]);
 
   // Data updates (live readings, metric switch) only touch the source and the labels.
   useEffect(() => {
@@ -209,6 +223,14 @@ export default function StationsMap({
     }
   }, [ready, stations, metric]);
 
+  if (!webgl || failed === 'webgl') {
+    return (
+      <NoWebGL title="Mapa 3D indisponível neste navegador">
+        Os dados das estações continuam na lista abaixo.
+      </NoWebGL>
+    );
+  }
+
   if (!hasPoints) {
     return (
       <EmptyState
@@ -227,7 +249,7 @@ export default function StationsMap({
       <div className="absolute inset-0">
         <div ref={container} className="h-full w-full" />
       </div>
-      {failed && (
+      {failed === 'style' && (
         <div className="absolute inset-0 grid place-items-center bg-panel/80 p-6 text-center text-sm text-ink-2">
           Não foi possível carregar o mapa base (sem internet?). Os dados das estações continuam na
           lista abaixo.

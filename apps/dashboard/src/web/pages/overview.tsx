@@ -8,9 +8,12 @@ import { AlertList } from '../components/alert-list';
 import { MAP_METRICS, type MapMetric } from '../components/map/map-metrics';
 import { StationRack } from '../components/station/station-rack';
 import { SystemPanel } from '../components/system-panel';
+import { ErrorBoundary } from '../components/ui/error-boundary';
 import { EmptyState, ErrorNotice, PageHeader } from '../components/ui/misc';
 import { Segmented } from '../components/ui/segmented';
+import { cn } from '../lib/css';
 import { usePageTitle } from '../lib/page-title';
+import { supportsWebGL2 } from '../lib/webgl';
 
 const StationsMap = lazy(() => import('../components/map/stations-map'));
 
@@ -84,6 +87,7 @@ export default function OverviewPage() {
   const isAdmin = useIsAdmin();
   const navigate = useNavigate();
   const [metric, setMetric] = useState<MapMetric>(storedMetric);
+  const webgl = supportsWebGL2();
 
   const chooseMetric = (value: MapMetric) => {
     setMetric(value);
@@ -148,26 +152,41 @@ export default function OverviewPage() {
           <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_380px]">
             <section
               aria-label="Mapa das estações"
-              className="panel relative h-[380px] p-px sm:h-[460px]"
+              className={cn('panel relative p-px', webgl && 'h-[380px] sm:h-[460px]')}
             >
-              <div className="absolute top-3 left-3 z-10 max-w-[calc(100%-4.5rem)] overflow-x-auto">
-                <Segmented
-                  label="Altura das colunas"
-                  value={metric}
-                  options={METRIC_OPTIONS}
-                  onChange={chooseMetric}
-                  className="bg-panel/90 backdrop-blur-sm"
-                />
-              </div>
-              <Suspense fallback={<div className="h-full animate-pulse rounded-[9px] bg-sunken" />}>
-                {stations.data && (
-                  <StationsMap
-                    stations={active}
-                    metric={metric}
-                    onSelect={(code) => navigate(`/estacoes/${code}`)}
+              {/* Without WebGL2 there is no map to drive, only the notice. */}
+              {webgl && (
+                <div className="absolute top-3 left-3 z-10 max-w-[calc(100%-4.5rem)] overflow-x-auto">
+                  <Segmented
+                    label="Altura das colunas"
+                    value={metric}
+                    options={METRIC_OPTIONS}
+                    onChange={chooseMetric}
+                    className="bg-panel/90 backdrop-blur-sm"
                   />
-                )}
-              </Suspense>
+                </div>
+              )}
+              {/* A broken map must never take the station list down with it. */}
+              <ErrorBoundary
+                fallback={
+                  <p className="grid h-full place-items-center p-6 text-center text-sm text-ink-2">
+                    Não foi possível mostrar o mapa. Os dados das estações continuam na lista
+                    abaixo.
+                  </p>
+                }
+              >
+                <Suspense
+                  fallback={<div className="h-full animate-pulse rounded-[9px] bg-sunken" />}
+                >
+                  {stations.data && (
+                    <StationsMap
+                      stations={active}
+                      metric={metric}
+                      onSelect={(code) => navigate(`/estacoes/${code}`)}
+                    />
+                  )}
+                </Suspense>
+              </ErrorBoundary>
             </section>
             <div className="flex flex-col gap-6">
               <ActiveAlerts />

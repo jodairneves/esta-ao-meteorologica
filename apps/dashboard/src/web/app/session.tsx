@@ -17,7 +17,8 @@ export function useUser(): SessionUser {
 
 export const useIsAdmin = () => useUser().role === 'admin';
 
-function Splash() {
+/** Brand mark while the session or the first page chunk loads. */
+export function Splash() {
   return (
     <div className="grid min-h-dvh place-items-center">
       <BrandMark className="size-10 animate-pulse text-ink-3" />

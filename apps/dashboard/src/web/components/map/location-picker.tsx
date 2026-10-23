@@ -2,6 +2,8 @@ import { type Map as MapLibre, Marker } from 'maplibre-gl';
 import { useEffect, useRef, useState } from 'react';
 import { cssVar } from '../../lib/css';
 import { useTheme } from '../../lib/theme';
+import { supportsWebGL2 } from '../../lib/webgl';
+import { NoWebGL } from '../ui/no-webgl';
 import { createBaseMap } from './base-map';
 
 const BRAZIL = { center: [-51.9, -14.2] as [number, number], zoom: 3.2 };
@@ -23,30 +25,39 @@ export default function LocationPicker({
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
   const initial = useRef({ latitude, longitude });
-  const [failed, setFailed] = useState(false);
+  const [failed, setFailed] = useState<'style' | 'webgl' | null>(null);
+  const webgl = supportsWebGL2();
 
   useEffect(() => {
-    if (!container.current) return;
+    if (!container.current || !webgl) return;
     const start = initial.current;
     const hasPoint = start.latitude !== null && start.longitude !== null;
-    const map = createBaseMap(
-      container.current,
-      theme,
-      (loaded) => {
-        loaded.on('click', (event) => {
-          onChangeRef.current(
-            Number(event.lngLat.lat.toFixed(5)),
-            Number(event.lngLat.lng.toFixed(5)),
-          );
-        });
-      },
-      {
-        center: hasPoint ? [start.longitude as number, start.latitude as number] : BRAZIL.center,
-        zoom: hasPoint ? 13 : BRAZIL.zoom,
-        cooperativeGestures: false,
-        onStyleError: () => setFailed(true),
-      },
-    );
+    let map: MapLibre;
+    try {
+      map = createBaseMap(
+        container.current,
+        theme,
+        (loaded) => {
+          loaded.on('click', (event) => {
+            onChangeRef.current(
+              Number(event.lngLat.lat.toFixed(5)),
+              Number(event.lngLat.lng.toFixed(5)),
+            );
+          });
+        },
+        {
+          center: hasPoint ? [start.longitude as number, start.latitude as number] : BRAZIL.center,
+          zoom: hasPoint ? 13 : BRAZIL.zoom,
+          cooperativeGestures: false,
+          onStyleError: () => setFailed('style'),
+        },
+      );
+    } catch (error) {
+      // WebGL2 can still be refused at creation time (GPU reset, driver blocklist).
+      console.warn('map unavailable', error);
+      setFailed('webgl');
+      return;
+    }
     map.getCanvas().style.cursor = 'crosshair';
     mapRef.current = map;
     const observer = new ResizeObserver(() => map.resize());
@@ -58,7 +69,7 @@ export default function LocationPicker({
       map.remove();
       mapRef.current = null;
     };
-  }, [theme]);
+  }, [theme, webgl]);
 
   // The pin follows the form values (typed coordinates move it too); a new map needs a new pin.
   // biome-ignore lint/correctness/useExhaustiveDependencies: theme recreates the map
@@ -84,13 +95,24 @@ export default function LocationPicker({
     }
   }, [latitude, longitude, theme]);
 
+  if (!webgl || failed === 'webgl') {
+    return (
+      <NoWebGL
+        title="Mapa indisponível neste navegador"
+        className="rounded-md border border-hairline"
+      >
+        Enquanto isso, digite a latitude e a longitude nos campos abaixo.
+      </NoWebGL>
+    );
+  }
+
   return (
     <div className="relative h-72 overflow-hidden rounded-md border border-hairline">
       {/* MapLibre's stylesheet makes its container position: relative, so a wrapper holds the box. */}
       <div className="absolute inset-0">
         <div ref={container} className="h-full w-full" />
       </div>
-      {failed && (
+      {failed === 'style' && (
         <div className="absolute inset-0 grid place-items-center bg-panel/85 p-4 text-center text-sm text-ink-2">
           Mapa indisponível (sem internet?). Digite a latitude e a longitude nos campos.
         </div>

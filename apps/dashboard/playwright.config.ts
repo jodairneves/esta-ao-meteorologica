@@ -32,7 +32,19 @@ export default defineConfig({
     {
       name: 'chromium',
       testMatch: /\.spec\.ts/,
+      testIgnore: /no-webgl\.spec\.ts/,
       use: { ...devices['Desktop Chrome'], storageState: ADMIN_STATE },
+      dependencies: ['setup'],
+    },
+    {
+      // A machine without graphics acceleration: WebGL is off in this browser.
+      name: 'no-webgl',
+      testMatch: /no-webgl\.spec\.ts/,
+      use: {
+        ...devices['Desktop Chrome'],
+        storageState: ADMIN_STATE,
+        launchOptions: { args: ['--disable-3d-apis'] },
+      },
       dependencies: ['setup'],
     },
   ],
