@@ -15,8 +15,9 @@ test('without WebGL2 the screens open with a notice instead of the map and 3D vi
 
   await expect(page.getByRole('heading', { level: 1, name: 'Visão geral' })).toBeVisible();
   await expect(page.getByText('Mapa 3D indisponível neste navegador')).toBeVisible();
+  // A demo station with history: a real one on the bench may have no temperature for the heatmap.
   const rack = page.getByRole('region', { name: 'Estações', exact: true });
-  await rack.getByRole('link').first().click();
+  await rack.getByRole('link', { name: /Sede/ }).first().click();
 
   await expect(page.getByText('Cena 3D indisponível neste navegador')).toBeVisible();
   await expect(page.getByRole('region', { name: 'Valores ao vivo' })).toContainText('Temperatura');
