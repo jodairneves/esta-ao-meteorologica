@@ -4,11 +4,12 @@ import { POWER_MODES, type Sensor } from '../domain/enums';
 // `data` payloads of the station events the server acts upon (design §3.6).
 
 /** Sensor names used by the firmware in `health.sensors` and in sensor events. */
-export const DEVICE_SENSOR_KEYS = ['bme280', 'wind', 'rain'] as const;
+export const DEVICE_SENSOR_KEYS = ['bme280', 'htu21d', 'wind', 'rain'] as const;
 export type DeviceSensorKey = (typeof DEVICE_SENSOR_KEYS)[number];
 
 export const SENSOR_BY_DEVICE_KEY: Record<DeviceSensorKey, Sensor> = {
   bme280: 'bme280',
+  htu21d: 'htu21d',
   wind: 'anemometer',
   rain: 'rain_gauge',
 };

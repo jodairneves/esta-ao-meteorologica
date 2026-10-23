@@ -7,8 +7,10 @@ import {
   type Database,
   type DbPool,
   eq,
+  openAlert,
   prepareDatabase,
   readings,
+  stationSensors,
   stations,
   users,
 } from '@wx/db';
@@ -24,6 +26,7 @@ import type {
   Page,
   SeriesResponse,
   StationCredentials,
+  StationDetail,
   StationSummary,
   SystemStatus,
   TemporaryPasswordResponse,
@@ -413,6 +416,39 @@ describe('dashboard API', () => {
       ).toBe(204);
       expect((await admin.get(`/stations/${disposable.station.code}`)).statusCode).toBe(404);
       await expect(connectStation(disposable.credentials)).rejects.toThrow();
+    });
+
+    it('registers the HTU21D version and switches versions cleanly', async () => {
+      const response = await admin.post('/stations', {
+        name: `Horta ${suffix}`,
+        climateSensor: 'htu21d',
+      });
+      expect(response.statusCode).toBe(201);
+      const htu = (response.json() as CreateStationResponse).station;
+      createdCodes.push(htu.code);
+      expect(htu.climateSensor).toBe('htu21d');
+      expect(
+        (await admin.post('/stations', { name: 'Outra', climateSensor: 'dht22' })).statusCode,
+      ).toBe(400);
+
+      // What the collector had recorded about the HTU21D before the version change.
+      await db
+        .insert(stationSensors)
+        .values({ stationId: htu.id, sensor: 'htu21d', status: 'error' });
+      await openAlert(db, {
+        stationId: htu.id,
+        type: 'sensor_error',
+        subject: 'htu21d',
+        severity: 'warning',
+        message: 'Falha no HTU21D',
+      });
+
+      const switched = (
+        await admin.patch(`/stations/${htu.code}`, { climateSensor: 'bme280' })
+      ).json() as StationDetail;
+      expect(switched.climateSensor).toBe('bme280');
+      expect(switched.sensors.map((sensor) => sensor.sensor)).not.toContain('htu21d');
+      expect(switched.alerts.filter((alert) => alert.subject === 'htu21d')).toHaveLength(0);
     });
   });
 

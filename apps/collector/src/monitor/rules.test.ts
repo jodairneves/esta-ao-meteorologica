@@ -67,11 +67,18 @@ describe('contact rules', () => {
 
 describe('sensor rules', () => {
   it('does not expect wind and rain while the station is in survival', () => {
-    expect(isSensorExpected('bme280', 'survival')).toBe(true);
-    expect(isSensorExpected('anemometer', 'survival')).toBe(false);
-    expect(isSensorExpected('rain_gauge', 'survival')).toBe(false);
-    expect(isSensorExpected('anemometer', 'economy')).toBe(true);
-    expect(isSensorExpected('battery', 'normal')).toBe(false);
+    expect(isSensorExpected('bme280', 'survival', 'bme280')).toBe(true);
+    expect(isSensorExpected('anemometer', 'survival', 'bme280')).toBe(false);
+    expect(isSensorExpected('rain_gauge', 'survival', 'bme280')).toBe(false);
+    expect(isSensorExpected('anemometer', 'economy', 'bme280')).toBe(true);
+    expect(isSensorExpected('battery', 'normal', 'bme280')).toBe(false);
+  });
+
+  it('expects only the climate sensor of the station version', () => {
+    expect(isSensorExpected('htu21d', 'normal', 'htu21d')).toBe(true);
+    expect(isSensorExpected('htu21d', 'survival', 'htu21d')).toBe(true);
+    expect(isSensorExpected('bme280', 'normal', 'htu21d')).toBe(false);
+    expect(isSensorExpected('htu21d', 'normal', 'bme280')).toBe(false);
   });
 
   it('flags sensors that stopped delivering data', () => {
@@ -80,13 +87,23 @@ describe('sensor rules', () => {
       { sensor: 'anemometer' as const, status: 'ok' as const, lastValueAt: after(-10) },
       { sensor: 'rain_gauge' as const, status: 'error' as const, lastValueAt: after(-9999) },
     ];
-    expect(findStaleSensors(sensors, input(), settings, seen)).toEqual(['bme280']);
+    expect(findStaleSensors(sensors, input(), 'bme280', settings, seen)).toEqual(['bme280']);
   });
 
   it('waits longer for stations that send in batches', () => {
     const sensors = [
       { sensor: 'bme280' as const, status: 'ok' as const, lastValueAt: after(-900) },
     ];
-    expect(findStaleSensors(sensors, input({ powerMode: 'economy' }), settings, seen)).toEqual([]);
+    expect(
+      findStaleSensors(sensors, input({ powerMode: 'economy' }), 'bme280', settings, seen),
+    ).toEqual([]);
+  });
+
+  it('ignores a leftover row of the other version climate sensor', () => {
+    const sensors = [
+      { sensor: 'bme280' as const, status: 'ok' as const, lastValueAt: after(-9999) },
+      { sensor: 'htu21d' as const, status: 'ok' as const, lastValueAt: after(-301) },
+    ];
+    expect(findStaleSensors(sensors, input(), 'htu21d', settings, seen)).toEqual(['htu21d']);
   });
 });

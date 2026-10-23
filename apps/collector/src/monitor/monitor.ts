@@ -102,7 +102,7 @@ export async function runMonitorTick(deps: MonitorDeps, now = new Date()): Promi
     if (contact.status !== 'ok') continue;
 
     const sensors = sensorRows.filter((sensor) => sensor.stationId === station.id);
-    const stale = findStaleSensors(sensors, input, settings, now);
+    const stale = findStaleSensors(sensors, input, station.climateSensor, settings, now);
     for (const sensor of stale) {
       report.staleSensors++;
       await deps.db.transaction(async (tx) => {

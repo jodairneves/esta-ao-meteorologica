@@ -1,4 +1,6 @@
 import {
+  CLIMATE_SENSORS,
+  type ClimateSensor,
   CONNECTION_STATES,
   type ConnectionState,
   DEFAULT_CALIBRATION,
@@ -42,6 +44,8 @@ export const stations = pgTable(
     /** Site elevation, used for the sea-level pressure. */
     elevationM: real('elevation_m'),
     timezone: text('timezone').notNull().default(DEFAULT_TIMEZONE),
+    /** Station version: BME280 (temperature, humidity and pressure) or HTU21D (no pressure). */
+    climateSensor: text('climate_sensor').$type<ClimateSensor>().notNull().default('bme280'),
     isActive: boolean('is_active').notNull().default(true),
     rainMmPerTip: real('rain_mm_per_tip').notNull().default(DEFAULT_CALIBRATION.rainMmPerTip),
     windMsPerHz: real('wind_ms_per_hz').notNull().default(DEFAULT_CALIBRATION.windMsPerHz),
@@ -63,6 +67,7 @@ export const stations = pgTable(
     check('stations_rain_factor_check', sql`${t.rainMmPerTip} > 0`),
     check('stations_wind_factor_check', sql`${t.windMsPerHz} > 0`),
     check('stations_device_config_rev_check', sql`${t.deviceConfigRev} >= 1`),
+    check('stations_climate_sensor_check', oneOf(t.climateSensor, CLIMATE_SENSORS)),
   ],
 );
 

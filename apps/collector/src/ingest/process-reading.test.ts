@@ -18,6 +18,7 @@ const station: CachedStation = {
   isActive: true,
   timezone: 'America/Sao_Paulo',
   elevationM: 500,
+  climateSensor: 'bme280',
   calibration: DEFAULT_CALIBRATION,
   intervalS: 60,
   economyBatchS: 600,

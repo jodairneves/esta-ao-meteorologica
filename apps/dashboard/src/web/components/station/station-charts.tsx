@@ -1,4 +1,4 @@
-import type { SeriesBucket } from '@wx/shared';
+import { measuresPressure, type SeriesBucket } from '@wx/shared';
 import { ChartNoAxesColumn } from 'lucide-react';
 import { useMemo } from 'react';
 import type { StationDetail } from '../../../common/api';
@@ -34,6 +34,7 @@ export function StationCharts({ station, period }: { station: StationDetail; per
   const series = useSeries(station.code, from, to);
   const rainSeriesBucket = rainBucket(period);
   const rain = useSeries(station.code, from, to, rainSeriesBucket);
+  const hasBarometer = measuresPressure(station.climateSensor);
   const timeZone = station.timezone;
 
   const prepared = useMemo(() => {
@@ -186,26 +187,30 @@ export function StationCharts({ station, period }: { station: StationDetail; per
           />
         </ChartPanel>
 
-        <ChartPanel
-          title={prepared.usesMsl ? 'Pressão ao nível do mar' : 'Pressão da estação'}
-          unit="hPa"
-          refreshing={refreshing}
-          table={table(['Data e hora', 'Pressão (hPa)'], (i) => [
-            when(i),
-            cell(prepared.pressure[0]?.values[i], 1),
-          ])}
-        >
-          <TimeSeriesChart
-            t={t}
-            series={prepared.pressure}
+        {hasBarometer && (
+          <ChartPanel
+            title={prepared.usesMsl ? 'Pressão ao nível do mar' : 'Pressão da estação'}
             unit="hPa"
-            digits={1}
-            timeZone={timeZone}
-            label="Gráfico de pressão atmosférica"
-          />
-        </ChartPanel>
+            refreshing={refreshing}
+            table={table(['Data e hora', 'Pressão (hPa)'], (i) => [
+              when(i),
+              cell(prepared.pressure[0]?.values[i], 1),
+            ])}
+          >
+            <TimeSeriesChart
+              t={t}
+              series={prepared.pressure}
+              unit="hPa"
+              digits={1}
+              timeZone={timeZone}
+              label="Gráfico de pressão atmosférica"
+            />
+          </ChartPanel>
+        )}
 
         <ChartPanel
+          // Without the pressure chart, wind takes the whole row instead of leaving a hole.
+          className={hasBarometer ? undefined : 'xl:col-span-2'}
           title="Vento e rajada"
           unit="km/h"
           refreshing={refreshing}

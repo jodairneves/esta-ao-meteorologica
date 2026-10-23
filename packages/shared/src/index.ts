@@ -4,6 +4,7 @@ export * from './contract/event-data';
 export * from './contract/ranges';
 export * from './contract/schemas';
 export * from './contract/topics';
+export * from './domain/climate';
 export * from './domain/defaults';
 export * from './domain/enums';
 export * from './domain/labels';

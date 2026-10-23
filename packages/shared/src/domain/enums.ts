@@ -19,7 +19,14 @@ export type PowerConfigMode = (typeof POWER_CONFIG_MODES)[number];
 export const RAIN_EDGES = ['change', 'falling'] as const;
 export type RainEdge = (typeof RAIN_EDGES)[number];
 
-export const SENSORS = ['bme280', 'anemometer', 'rain_gauge', 'battery'] as const;
+/**
+ * Temperature/humidity sensor a station is built with: BME280 (the full version, which also
+ * measures pressure) or HTU21D (temperature and humidity only).
+ */
+export const CLIMATE_SENSORS = ['bme280', 'htu21d'] as const;
+export type ClimateSensor = (typeof CLIMATE_SENSORS)[number];
+
+export const SENSORS = ['bme280', 'htu21d', 'anemometer', 'rain_gauge', 'battery'] as const;
 export type Sensor = (typeof SENSORS)[number];
 
 export const SENSOR_STATUSES = [

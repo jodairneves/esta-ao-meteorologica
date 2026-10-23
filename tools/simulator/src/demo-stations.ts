@@ -1,3 +1,4 @@
+import { CLIMATE_SENSORS } from '@wx/shared';
 import { z } from 'zod';
 
 export const climateProfileSchema = z.object({
@@ -25,14 +26,17 @@ export const simulatedStationSchema = z.object({
   longitude: z.number(),
   elevationM: z.number(),
   timezone: z.string(),
+  /** Station version: BME280 (with pressure) or HTU21D (temperature and humidity only). */
+  climateSensor: z.enum(CLIMATE_SENSORS).default('bme280'),
   rainMmPerTip: z.number().positive(),
   windMsPerHz: z.number().positive(),
   climate: climateProfileSchema,
   power: powerProfileSchema,
 });
-export type SimulatedStation = z.infer<typeof simulatedStationSchema>;
+export type SimulatedStation = z.output<typeof simulatedStationSchema>;
 
-// Three demo stations near Piracicaba (SP) in spring, each exercising a different power profile.
+// Demo stations near Piracicaba (SP) in spring: three full stations, each exercising a different
+// power profile, and one of the HTU21D version (no barometer).
 export const DEMO_STATIONS: readonly SimulatedStation[] = [
   {
     code: 'sede',
@@ -42,6 +46,7 @@ export const DEMO_STATIONS: readonly SimulatedStation[] = [
     longitude: -47.6492,
     elevationM: 547,
     timezone: 'America/Sao_Paulo',
+    climateSensor: 'bme280',
     rainMmPerTip: 0.64,
     windMsPerHz: 0.42,
     climate: {
@@ -61,6 +66,7 @@ export const DEMO_STATIONS: readonly SimulatedStation[] = [
     longitude: -47.6105,
     elevationM: 568,
     timezone: 'America/Sao_Paulo',
+    climateSensor: 'bme280',
     rainMmPerTip: 0.173,
     windMsPerHz: 0.42,
     climate: {
@@ -81,6 +87,7 @@ export const DEMO_STATIONS: readonly SimulatedStation[] = [
     longitude: -47.6687,
     elevationM: 521,
     timezone: 'America/Sao_Paulo',
+    climateSensor: 'bme280',
     rainMmPerTip: 0.64,
     windMsPerHz: 0.42,
     climate: {
@@ -91,5 +98,25 @@ export const DEMO_STATIONS: readonly SimulatedStation[] = [
       rainEventsPerDay: 0.5,
     },
     power: { capacityMah: 3000, solarPeakMa: 45, initialSocPct: 28 },
+  },
+  {
+    code: 'horta',
+    name: 'Horta',
+    description: 'Versão com HTU21D (sem pressão), na horta comunitária; painel de 2 W.',
+    latitude: -22.7402,
+    longitude: -47.6311,
+    elevationM: 534,
+    timezone: 'America/Sao_Paulo',
+    climateSensor: 'htu21d',
+    rainMmPerTip: 0.64,
+    windMsPerHz: 0.42,
+    climate: {
+      meanTempC: 23,
+      dailyAmplitudeC: 7.5,
+      meanPressureMslHpa: 1013,
+      windMeanMs: 1.8,
+      rainEventsPerDay: 0.5,
+    },
+    power: { capacityMah: 3000, solarPeakMa: 300, initialSocPct: 75 },
   },
 ];

@@ -29,6 +29,7 @@ test('an admin registers a station and receives its MQTT credentials once', asyn
   await page.goto('/admin/estacoes/nova');
   await page.getByLabel('Nome').fill(stationName);
   await page.getByLabel('Código (usado no MQTT)').fill(code);
+  await page.getByLabel('Versão da estação').selectOption('htu21d');
   await page.getByLabel('Latitude').fill('-22,70');
   await page.getByLabel('Longitude').fill('-47,62');
   await page.getByRole('button', { name: 'Cadastrar estação' }).click();
@@ -41,6 +42,15 @@ test('an admin registers a station and receives its MQTT credentials once', asyn
 
   await expect(page).toHaveURL(new RegExp(`/admin/estacoes/${code}$`));
   await expect(page.getByRole('heading', { level: 1, name: stationName })).toBeVisible();
+});
+
+test('a station of the HTU21D version shows no pressure', async ({ page }) => {
+  await page.goto(`/estacoes/${code}`);
+  await expect(page.getByRole('heading', { level: 1, name: stationName })).toBeVisible();
+  await expect(page.getByText('Versão HTU21D, sem pressão')).toBeVisible();
+  const live = page.getByRole('region', { name: 'Valores ao vivo' });
+  await expect(live).toContainText('Temperatura');
+  await expect(live).not.toContainText('Pressão');
 });
 
 test('the new station is listed and can be deleted after typing its code', async ({ page }) => {

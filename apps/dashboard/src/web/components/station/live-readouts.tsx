@@ -1,5 +1,5 @@
 import type { PressureTrend } from '@wx/shared';
-import { liIonPercent } from '@wx/shared';
+import { liIonPercent, measuresPressure } from '@wx/shared';
 import { type LucideIcon, MoveDownRight, MoveRight, MoveUpRight } from 'lucide-react';
 import type { ReactNode } from 'react';
 import type { LatestResponse, StationDetail } from '../../../common/api';
@@ -86,6 +86,7 @@ export function LiveReadouts({
   const timeZone = station.timezone;
   const trend = derived?.pressureTrend ? TREND[derived.pressureTrend] : null;
   const TrendIcon = trend?.icon;
+  const hasBarometer = measuresPressure(station.climateSensor);
   const mslAvailable = reading?.pressureMslHpa != null;
   const power = station.state.powerMode ? POWER_MODE_LOOK[station.state.powerMode] : null;
   const batteryMv = station.state.batteryMv;
@@ -124,30 +125,33 @@ export function LiveReadouts({
         <Detail term="Ponto de orvalho">{withUnit(reading?.dewPointC, '°C', 1)}</Detail>
       </Instrument>
 
-      <Instrument
-        name={mslAvailable ? 'Pressão ao nível do mar' : 'Pressão da estação'}
-        color="--q-pres"
-        value={formatNumber(mslAvailable ? reading?.pressureMslHpa : reading?.pressureHpa, 1)}
-        unit="hPa"
-        stale={stale}
-      >
-        <Detail term="Tendência em 3 h">
-          {trend && TrendIcon ? (
-            <span className="inline-flex items-center gap-1">
-              <TrendIcon aria-hidden className="size-3.5 text-ink-2" />
-              {trend.label}
-              {derived?.pressureChange3hHpa != null &&
-                ` (${derived.pressureChange3hHpa > 0 ? '+' : ''}${formatNumber(derived.pressureChange3hHpa, 1)} hPa)`}
-            </span>
-          ) : (
-            MISSING
+      {/* The HTU21D version has no barometer: no pressure, trend or altitude. */}
+      {hasBarometer && (
+        <Instrument
+          name={mslAvailable ? 'Pressão ao nível do mar' : 'Pressão da estação'}
+          color="--q-pres"
+          value={formatNumber(mslAvailable ? reading?.pressureMslHpa : reading?.pressureHpa, 1)}
+          unit="hPa"
+          stale={stale}
+        >
+          <Detail term="Tendência em 3 h">
+            {trend && TrendIcon ? (
+              <span className="inline-flex items-center gap-1">
+                <TrendIcon aria-hidden className="size-3.5 text-ink-2" />
+                {trend.label}
+                {derived?.pressureChange3hHpa != null &&
+                  ` (${derived.pressureChange3hHpa > 0 ? '+' : ''}${formatNumber(derived.pressureChange3hHpa, 1)} hPa)`}
+              </span>
+            ) : (
+              MISSING
+            )}
+          </Detail>
+          {mslAvailable && (
+            <Detail term="Na estação">{withUnit(reading?.pressureHpa, 'hPa', 1)}</Detail>
           )}
-        </Detail>
-        {mslAvailable && (
-          <Detail term="Na estação">{withUnit(reading?.pressureHpa, 'hPa', 1)}</Detail>
-        )}
-        <Detail term="Altitude barométrica">{withUnit(reading?.altitudeM, 'm', 0)}</Detail>
-      </Instrument>
+          <Detail term="Altitude barométrica">{withUnit(reading?.altitudeM, 'm', 0)}</Detail>
+        </Instrument>
+      )}
 
       <Instrument
         name="Vento médio"

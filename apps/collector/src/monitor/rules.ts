@@ -1,10 +1,12 @@
-import type {
-  AlertSeverity,
-  ConnectionState,
-  MonitoringSettings,
-  PowerMode,
-  Sensor,
-  SensorStatus,
+import {
+  type AlertSeverity,
+  type ClimateSensor,
+  type ConnectionState,
+  isClimateSensor,
+  type MonitoringSettings,
+  type PowerMode,
+  type Sensor,
+  type SensorStatus,
 } from '@wx/shared';
 
 // Pure rules of the monitor (design §7.4).
@@ -67,11 +69,18 @@ export function evaluateContact(
   };
 }
 
-/** Sensors the station is supposed to report in its current profile (battery comes via health). */
-export function isSensorExpected(sensor: Sensor, powerMode: PowerMode | null): boolean {
+/**
+ * Sensors the station is supposed to report in its current profile (battery comes via health).
+ * Only the climate sensor of the station's version counts; in survival it is the only one.
+ */
+export function isSensorExpected(
+  sensor: Sensor,
+  powerMode: PowerMode | null,
+  climateSensor: ClimateSensor,
+): boolean {
   if (sensor === 'battery') return false;
-  if (powerMode === 'survival') return sensor === 'bme280';
-  return true;
+  if (isClimateSensor(sensor)) return sensor === climateSensor;
+  return powerMode !== 'survival';
 }
 
 export function sensorStaleAfterS(input: ContactInput, settings: MonitoringSettings): number {
@@ -91,6 +100,7 @@ export interface SensorSnapshot {
 export function findStaleSensors(
   sensors: readonly SensorSnapshot[],
   input: ContactInput,
+  climateSensor: ClimateSensor,
   settings: MonitoringSettings,
   now: Date,
 ): Sensor[] {
@@ -100,7 +110,7 @@ export function findStaleSensors(
       (s) =>
         s.status === 'ok' &&
         s.lastValueAt !== null &&
-        isSensorExpected(s.sensor, input.powerMode) &&
+        isSensorExpected(s.sensor, input.powerMode, climateSensor) &&
         now.getTime() - s.lastValueAt.getTime() > limitMs,
     )
     .map((s) => s.sensor);

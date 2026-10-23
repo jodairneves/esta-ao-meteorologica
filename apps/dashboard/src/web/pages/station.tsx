@@ -1,3 +1,4 @@
+import { measuresPressure } from '@wx/shared';
 import { Download, MapPinOff, Pencil } from 'lucide-react';
 import { lazy, Suspense, useMemo } from 'react';
 import { Link, useParams } from 'react-router';
@@ -218,6 +219,11 @@ export default function StationPage() {
               Altitude {formatNumber(data.elevationM, 0)} m
             </span>
           )}
+          <span className="text-[13px] text-ink-3">
+            {data.climateSensor === 'htu21d'
+              ? 'Versão HTU21D, sem pressão'
+              : 'Versão completa (BME280)'}
+          </span>
         </div>
         {data.description && (
           <p className="mt-2 max-w-2xl text-sm text-ink-2">{data.description}</p>
@@ -254,7 +260,13 @@ export default function StationPage() {
         to={new Date(yearTo).toISOString()}
         timeZone={data.timezone}
       />
-      <DailyTable code={data.code} from={long.from} to={long.to} caption={long.caption} />
+      <DailyTable
+        code={data.code}
+        from={long.from}
+        to={long.to}
+        caption={long.caption}
+        hasBarometer={measuresPressure(data.climateSensor)}
+      />
     </div>
   );
 }

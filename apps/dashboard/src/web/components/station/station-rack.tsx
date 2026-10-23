@@ -1,3 +1,4 @@
+import { measuresPressure } from '@wx/shared';
 import { OctagonAlert, TriangleAlert } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { Link } from 'react-router';
@@ -138,7 +139,13 @@ function StationRow({ station, now }: { station: StationSummary; now: number }) 
         unit="mm"
         stale={stale}
       />
-      <Readout label="Pressão" value={formatNumber(pressure, 1)} unit="hPa" stale={stale} />
+      <Readout
+        label="Pressão"
+        value={formatNumber(pressure, 1)}
+        unit="hPa"
+        stale={stale}
+        detail={measuresPressure(station.climateSensor) ? undefined : 'Versão sem barômetro'}
+      />
       <div className="min-w-0">
         <div className="text-[13px] text-ink-3 lg:sr-only">Bateria</div>
         <BatteryMeter mv={station.state.batteryMv} />

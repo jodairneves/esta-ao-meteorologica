@@ -3,6 +3,7 @@ import {
   cmdAckDataSchema,
   configAppliedDataSchema,
   type DeviceEventMessage,
+  isClimateSensor,
   type LogCategory,
   modeChangedDataSchema,
   SENSOR_BY_DEVICE_KEY,
@@ -78,6 +79,8 @@ export async function handleDeviceEvent(
         const data = sensorEventDataSchema.safeParse(message.data);
         if (!data.success) break;
         const sensor = SENSOR_BY_DEVICE_KEY[data.data.sensor];
+        // The other version's climate sensor is a wiring/registration mismatch, reported by health.
+        if (isClimateSensor(sensor) && sensor !== station.climateSensor) break;
         const current = (await loadSensors(tx, station.id)).get(sensor);
         const update =
           message.code === 'SENSOR_FAILED'

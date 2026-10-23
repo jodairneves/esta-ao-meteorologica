@@ -70,7 +70,9 @@ export const healthMessageSchema = z.object({
   mqtt_reconn: optionalCount,
   buf: optionalCount,
   dropped: optionalCount,
-  sensors: z.object({ bme280: sensorHealth, wind: sensorHealth, rain: sensorHealth }).default({}),
+  sensors: z
+    .object({ bme280: sensorHealth, htu21d: sensorHealth, wind: sensorHealth, rain: sensorHealth })
+    .default({}),
   cfg_rev: z.int().min(0).nullable().default(null),
 });
 export type HealthMessage = z.infer<typeof healthMessageSchema>;

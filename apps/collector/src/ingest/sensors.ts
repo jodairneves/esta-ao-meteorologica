@@ -1,5 +1,11 @@
 import { type Executor, eq, openAlert, resolveAlerts, stationSensors } from '@wx/db';
-import { type PowerMode, SENSOR_LABELS, type Sensor, type SensorStatus } from '@wx/shared';
+import {
+  type ClimateSensor,
+  type PowerMode,
+  SENSOR_LABELS,
+  type Sensor,
+  type SensorStatus,
+} from '@wx/shared';
 import type { CachedStation } from '../stations/cache';
 import { writeLog } from '../store/event-log';
 import { capitalize, formatDateTime } from '../util/format';
@@ -112,20 +118,25 @@ export async function applySensorUpdate(
   }
 }
 
-const SENSOR_SOURCES: readonly {
+interface SensorSource {
   sensor: Sensor;
   hasValue: (reading: ProcessedReading) => boolean;
   /** Wind and rain are not counted while the station sleeps (survival profile). */
   measuredInSurvival: boolean;
-}[] = [
-  {
-    sensor: 'bme280',
-    hasValue: (r) => r.temperatureC !== null || r.humidityPct !== null || r.pressureHpa !== null,
-    measuredInSurvival: true,
-  },
-  { sensor: 'anemometer', hasValue: (r) => r.windPulses !== null, measuredInSurvival: false },
-  { sensor: 'rain_gauge', hasValue: (r) => r.rainCount !== null, measuredInSurvival: false },
-];
+}
+
+/** Which sensor produces each value; the climate sensor depends on the station version. */
+function sensorSources(climateSensor: ClimateSensor): readonly SensorSource[] {
+  return [
+    {
+      sensor: climateSensor,
+      hasValue: (r) => r.temperatureC !== null || r.humidityPct !== null || r.pressureHpa !== null,
+      measuredInSurvival: true,
+    },
+    { sensor: 'anemometer', hasValue: (r) => r.windPulses !== null, measuredInSurvival: false },
+    { sensor: 'rain_gauge', hasValue: (r) => r.rainCount !== null, measuredInSurvival: false },
+  ];
+}
 
 /** Marks sensors that delivered values as ok; in survival mode wind/rain become "not measured". */
 export async function updateSensorsFromReadings(
@@ -138,7 +149,7 @@ export async function updateSensorsFromReadings(
   if (stored.length === 0) return;
   const previous = await loadSensors(db, station.id);
 
-  for (const source of SENSOR_SOURCES) {
+  for (const source of sensorSources(station.climateSensor)) {
     const last = stored.filter(source.hasValue).at(-1);
     if (last) {
       await applySensorUpdate(

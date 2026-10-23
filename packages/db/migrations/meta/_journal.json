@@ -22,6 +22,13 @@
       "when": 1792724667852,
       "tag": "0002_session_remember",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1792758165044,
+      "tag": "0003_climate_sensor",
+      "breakpoints": true
     }
   ]
 }

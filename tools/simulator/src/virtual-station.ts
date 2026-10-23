@@ -6,6 +6,7 @@ import {
   DEFAULT_DEVICE_CONFIG,
   type DeviceConfig,
   type MessageKind,
+  measuresPressure,
   stationClientId,
   stationTopic,
   type TelemetryReading,
@@ -86,6 +87,14 @@ export class VirtualStation {
 
   get code(): string {
     return this.def.code;
+  }
+
+  private get hasBarometer(): boolean {
+    return measuresPressure(this.def.climateSensor);
+  }
+
+  private get climateName(): string {
+    return this.def.climateSensor === 'htu21d' ? 'HTU21D' : 'BME280';
   }
 
   /** Publishes history from `fromMs` to `toMs` as fast as the broker accepts it. */
@@ -258,7 +267,8 @@ export class VirtualStation {
         dur: durationS,
         temp: bmeOk ? round(weather.tempC + 0.05 * gaussian(this.rng), 2) : null,
         hum: bmeOk ? round(weather.humidityPct, 1) : null,
-        pres: bmeOk ? round(weather.pressureHpa, 2) : null,
+        // The HTU21D version has no barometer.
+        pres: bmeOk && this.hasBarometer ? round(weather.pressureHpa, 2) : null,
         wind_p: windPulses,
         gust_p: gustPulses,
         rain_c: rainCount,
@@ -302,12 +312,14 @@ export class VirtualStation {
     if (!this.bmeFailing && roll(0.002)) {
       this.bmeFailing = true;
       this.bmeFailureUntil = endMs + (10 + randomInt(20)) * intervalMs;
-      this.options.log(this.code, 'caos: BME280 falhou');
-      this.queueEvent('error', 'SENSOR_FAILED', 'BME280 não respondeu', { sensor: 'bme280' });
+      this.options.log(this.code, `caos: ${this.climateName} falhou`);
+      this.queueEvent('error', 'SENSOR_FAILED', `${this.climateName} não respondeu`, {
+        sensor: this.def.climateSensor,
+      });
     } else if (this.bmeFailing && endMs >= this.bmeFailureUntil) {
       this.bmeFailing = false;
-      this.queueEvent('info', 'SENSOR_RECOVERED', 'BME280 voltou a responder', {
-        sensor: 'bme280',
+      this.queueEvent('info', 'SENSOR_RECOVERED', `${this.climateName} voltou a responder`, {
+        sensor: this.def.climateSensor,
       });
     }
     if (this.client && this.power.currentMode === 'normal' && roll(0.002)) {
@@ -445,7 +457,13 @@ export class VirtualStation {
       mqtt_reconn: this.mqttReconnects,
       buf: this.buffer.length,
       dropped: this.dropped,
-      sensors: { bme280: atMs < this.bmeFailureUntil ? 'error' : 'ok', wind: 'ok', rain: 'ok' },
+      // Like the firmware: the probed climate sensor is reported, the other one as absent.
+      sensors: {
+        bme280: this.hasBarometer ? (atMs < this.bmeFailureUntil ? 'error' : 'ok') : 'absent',
+        htu21d: this.hasBarometer ? 'absent' : atMs < this.bmeFailureUntil ? 'error' : 'ok',
+        wind: 'ok',
+        rain: 'ok',
+      },
       cfg_rev: this.appliedRev > 0 ? this.appliedRev : null,
     });
   }

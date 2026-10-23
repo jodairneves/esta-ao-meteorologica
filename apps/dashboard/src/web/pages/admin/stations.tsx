@@ -38,7 +38,7 @@ export default function AdminStationsPage() {
       )}
       {stations.data && stations.data.length > 0 && (
         <section className="panel overflow-x-auto">
-          <table className="w-full min-w-[760px] text-sm">
+          <table className="w-full min-w-[860px] text-sm">
             <thead className="text-left text-[13px] text-ink-2">
               <tr className="border-b border-hairline">
                 <th scope="col" className="px-4 py-2.5 font-medium">
@@ -46,6 +46,9 @@ export default function AdminStationsPage() {
                 </th>
                 <th scope="col" className="px-4 py-2.5 font-medium">
                   Código
+                </th>
+                <th scope="col" className="px-4 py-2.5 font-medium">
+                  Versão
                 </th>
                 <th scope="col" className="px-4 py-2.5 font-medium">
                   Situação
@@ -68,6 +71,11 @@ export default function AdminStationsPage() {
                     {station.name}
                   </th>
                   <td className="dense px-4 py-3 text-ink-2">{station.code}</td>
+                  <td className="px-4 py-3 text-ink-2">
+                    {station.climateSensor === 'htu21d'
+                      ? 'HTU21D, sem pressão'
+                      : 'Completa (BME280)'}
+                  </td>
                   <td className="px-4 py-3">
                     <StatusPill look={stationStatusLook(station.status, station.statusSeverity)} />
                   </td>

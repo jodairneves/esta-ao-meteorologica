@@ -73,6 +73,7 @@ export const POWER_MODE_LOOK: Record<PowerMode, StatusLook & { description: stri
 
 export const SENSOR_NAMES: Record<Sensor, string> = {
   bme280: 'BME280',
+  htu21d: 'HTU21D',
   anemometer: 'Anemômetro',
   rain_gauge: 'Pluviômetro',
   battery: 'Bateria',

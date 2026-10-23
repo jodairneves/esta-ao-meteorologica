@@ -45,6 +45,7 @@ const suffix = randomBytes(3).toString('hex');
 const CODE = `itc-${suffix}`;
 const INACTIVE_CODE = `itc-${suffix}-off`;
 const UNKNOWN_CODE = `itc-${suffix}-unk`;
+const HTU_CODE = `itc-${suffix}-htu`;
 const COLLECTOR_USER = `itc-collector-${suffix}`;
 const RUN_1 = 1001;
 const RUN_2 = 1002;
@@ -159,7 +160,7 @@ describe('collector (App 1)', () => {
       clientid: COLLECTOR_USER,
       roles: [ROLE_NAMES.collector],
     });
-    for (const code of [CODE, INACTIVE_CODE, UNKNOWN_CODE]) {
+    for (const code of [CODE, INACTIVE_CODE, UNKNOWN_CODE, HTU_CODE]) {
       const password = generatePassword();
       passwords.set(code, password);
       await provisionStation(dynsec, code, password);
@@ -217,7 +218,7 @@ describe('collector (App 1)', () => {
         })
         .catch(() => null);
       await session?.endAsync();
-      for (const code of [CODE, INACTIVE_CODE, UNKNOWN_CODE]) {
+      for (const code of [CODE, INACTIVE_CODE, UNKNOWN_CODE, HTU_CODE]) {
         await removeStation(dynsec, admin, code).catch(() => {});
       }
       await deleteClient(dynsec, COLLECTOR_USER).catch(() => {});
@@ -522,5 +523,90 @@ describe('collector (App 1)', () => {
     await waitUntil(async () =>
       expect(await activeAlert('sensor_stale', 'anemometer')).toBeUndefined(),
     );
+  });
+
+  it('handles the HTU21D version: no pressure, its own sensor and no BME280', async () => {
+    const [htu] = await db
+      .insert(stations)
+      .values({
+        code: HTU_CODE,
+        name: 'Horta de teste',
+        elevationM: 500,
+        climateSensor: 'htu21d',
+        deviceConfig: DEFAULT_DEVICE_CONFIG,
+      })
+      .returning({ id: stations.id });
+    if (!htu) throw new Error('station not created');
+    const sensorsOf = async () =>
+      new Map(
+        (await db.select().from(stationSensors).where(eq(stationSensors.stationId, htu.id))).map(
+          (row) => [row.sensor, row.status],
+        ),
+      );
+    const client = await connectStation(HTU_CODE);
+    try {
+      await publish(client, HTU_CODE, 'telemetry', telemetry(RUN_1, [{ seq: 1, pres: null }]));
+      await waitUntil(async () => {
+        const [row] = await db.select().from(readings).where(eq(readings.stationId, htu.id));
+        expect(row).toMatchObject({
+          temperatureC: 25,
+          humidityPct: 60,
+          pressureHpa: null,
+          pressureMslHpa: null,
+          altitudeM: null,
+        });
+      });
+
+      await publish(
+        client,
+        HTU_CODE,
+        'health',
+        JSON.stringify({
+          v: 1,
+          fw: '1.0.0',
+          ts: nowS() - 5,
+          mode: 'normal',
+          bat_mv: 3950,
+          sensors: { htu21d: 'ok', bme280: 'absent', wind: 'ok', rain: 'ok' },
+        }),
+      );
+      await waitUntil(async () =>
+        expect(
+          await db.select().from(deviceHealth).where(eq(deviceHealth.stationId, htu.id)),
+        ).toHaveLength(1),
+      );
+      const sensors = await sensorsOf();
+      expect(sensors.get('htu21d')).toBe('ok');
+      // The BME280 reported as absent belongs to the other version: no row, no alert.
+      expect(sensors.has('bme280')).toBe(false);
+      const mismatch = await logsWithCode('CLIMATE_SENSOR_MISMATCH');
+      expect(mismatch.filter((log) => log.stationId === htu.id)).toHaveLength(0);
+    } finally {
+      await client.endAsync(true);
+    }
+  });
+
+  it('warns when a station reports the climate sensor of the other version', async () => {
+    await publish(
+      station,
+      CODE,
+      'health',
+      JSON.stringify({
+        v: 1,
+        fw: '1.0.0',
+        ts: nowS() - 2,
+        mode: 'normal',
+        bat_mv: 3950,
+        sensors: { bme280: 'absent', htu21d: 'ok', wind: 'ok', rain: 'ok' },
+      }),
+    );
+    await waitUntil(async () => {
+      const logs = (await logsWithCode('CLIMATE_SENSOR_MISMATCH')).filter(
+        (log) => log.stationId === stationId,
+      );
+      expect(logs).toHaveLength(1);
+      expect(logs[0]?.message).toContain('HTU21D');
+    });
+    expect(await activeAlert('sensor_error', 'bme280')).toBeDefined();
   });
 });

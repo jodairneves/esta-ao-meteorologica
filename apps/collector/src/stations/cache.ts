@@ -1,5 +1,5 @@
 import { type Database, eq, stations } from '@wx/db';
-import { type Calibration, stationLabel } from '@wx/shared';
+import { type Calibration, type ClimateSensor, stationLabel } from '@wx/shared';
 
 /** What the collector needs to know about a station to process its messages. */
 export interface CachedStation {
@@ -11,6 +11,8 @@ export interface CachedStation {
   isActive: boolean;
   timezone: string;
   elevationM: number | null;
+  /** Station version: which temperature/humidity sensor it carries. */
+  climateSensor: ClimateSensor;
   calibration: Calibration;
   intervalS: number;
   economyBatchS: number;
@@ -28,6 +30,7 @@ export function toCachedStation(row: StationRow): CachedStation {
     isActive: row.isActive,
     timezone: row.timezone,
     elevationM: row.elevationM,
+    climateSensor: row.climateSensor,
     calibration: {
       rainMmPerTip: row.rainMmPerTip,
       windMsPerHz: row.windMsPerHz,

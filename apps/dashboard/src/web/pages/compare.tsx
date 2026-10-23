@@ -1,4 +1,4 @@
-import type { SeriesBucket } from '@wx/shared';
+import { measuresPressure, type SeriesBucket } from '@wx/shared';
 import { ChartSpline, Check } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router';
@@ -79,7 +79,15 @@ export default function ComparePage() {
   const { from, to } = periodRange(period);
   // Readings of different stations never share timestamps; 10-minute means line them up.
   const bucket: SeriesBucket | 'auto' = spanMs(period) <= 48 * 3_600_000 ? '10m' : 'auto';
-  const compare = useCompare(selected, metric, from, to, bucket);
+  // Pressure only exists on the full version; HTU21D stations are left out and named below.
+  const withoutBarometer =
+    metric === 'pressure' || metric === 'pressureMsl'
+      ? active.filter(
+          (station) => selected.includes(station.id) && !measuresPressure(station.climateSensor),
+        )
+      : [];
+  const requested = selected.filter((id) => !withoutBarometer.some((station) => station.id === id));
+  const compare = useCompare(requested, metric, from, to, bucket);
   const quantity = QUANTITIES[metric];
   const isRain = metric === 'rain';
   const firstStation = active.find((station) => station.id === selected[0]);
@@ -88,7 +96,11 @@ export default function ComparePage() {
   const chart = useMemo(() => {
     const data = compare.data;
     if (!data) return null;
-    const everyActive = (stations.data ?? []).filter((station) => station.isActive);
+    // Slots follow the order of registration (ids are UUIDv7, time-ordered), so a new station
+    // never shifts the colours of the existing ones.
+    const everyActive = (stations.data ?? [])
+      .filter((station) => station.isActive)
+      .sort((a, b) => a.id.localeCompare(b.id));
     const slots = colorSlots(
       everyActive.map((station) => station.id),
       data.series.map((series) => series.stationId),
@@ -188,10 +200,26 @@ export default function ComparePage() {
         <PeriodFilter period={period} onChange={setPeriod} />
       </div>
 
-      {selected.length === 0 ? (
+      {withoutBarometer.length > 0 && (
+        <p className="-mt-2 text-[13px] text-ink-3">
+          {withoutBarometer.map((station) => station.name).join(', ')}{' '}
+          {withoutBarometer.length === 1 ? 'fica' : 'ficam'} de fora: a versão HTU21D não mede
+          pressão.
+        </p>
+      )}
+      {requested.length === 0 ? (
         <section className="panel">
-          <EmptyState icon={ChartSpline} title="Escolha ao menos uma estação">
-            Marque as estações acima para ver as linhas lado a lado.
+          <EmptyState
+            icon={ChartSpline}
+            title={
+              selected.length === 0
+                ? 'Escolha ao menos uma estação'
+                : 'Nenhuma das estações escolhidas mede pressão'
+            }
+          >
+            {selected.length === 0
+              ? 'Marque as estações acima para ver as linhas lado a lado.'
+              : 'Escolha outra grandeza ou inclua uma estação da versão completa (BME280).'}
           </EmptyState>
         </section>
       ) : (

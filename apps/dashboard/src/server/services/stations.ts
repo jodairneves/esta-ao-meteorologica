@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import {
+  and,
   CHANNELS,
   commands,
   type Database,
@@ -7,6 +8,8 @@ import {
   type Executor,
   eq,
   notifyStatement,
+  resolveAlerts,
+  stationSensors,
   stationState,
   stations,
   users,
@@ -104,6 +107,7 @@ export async function createStation(
         longitude: input.longitude ?? null,
         elevationM: input.elevationM ?? null,
         timezone: input.timezone ?? DEFAULT_TIMEZONE,
+        climateSensor: input.climateSensor ?? 'bme280',
         rainMmPerTip: input.rainMmPerTip ?? DEFAULT_CALIBRATION.rainMmPerTip,
         windMsPerHz: input.windMsPerHz ?? DEFAULT_CALIBRATION.windMsPerHz,
         tempOffsetC: input.tempOffsetC ?? 0,
@@ -153,14 +157,35 @@ export async function updateStation(
     if (input.isActive !== undefined && input.isActive !== station.isActive) {
       await broker.setEnabled(station.code, input.isActive);
     }
+    const versionChanged =
+      input.climateSensor !== undefined && input.climateSensor !== station.climateSensor;
+    if (versionChanged) {
+      // The previous climate sensor is gone: its status row and alerts would only mislead.
+      await tx
+        .delete(stationSensors)
+        .where(
+          and(
+            eq(stationSensors.stationId, station.id),
+            eq(stationSensors.sensor, station.climateSensor),
+          ),
+        );
+      await resolveAlerts(tx, {
+        stationId: station.id,
+        type: ['sensor_stale', 'sensor_error'],
+        subject: station.climateSensor,
+      });
+    }
     await notifyChanged(tx, station.id);
+    const label = stationLabel(station.name);
     await audit(tx, {
       userId: actor.id,
       code: 'STATION_UPDATED',
       message:
-        input.isActive === undefined || input.isActive === station.isActive
-          ? `${stationLabel(station.name)} atualizada`
-          : `${stationLabel(station.name)} ${input.isActive ? 'reativada' : 'desativada'}`,
+        input.isActive !== undefined && input.isActive !== station.isActive
+          ? `${label} ${input.isActive ? 'reativada' : 'desativada'}`
+          : versionChanged
+            ? `${label} passou para a versão ${input.climateSensor === 'htu21d' ? 'HTU21D' : 'BME280'}`
+            : `${label} atualizada`,
       stationId: station.id,
       details: { changes: input },
     });

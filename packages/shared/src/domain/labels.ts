@@ -1,12 +1,19 @@
-import type { ConnectionState, PowerMode, Sensor } from './enums';
+import type { ClimateSensor, ConnectionState, PowerMode, Sensor } from './enums';
 
 // Portuguese labels shown to users (dashboard and log messages).
 
 export const SENSOR_LABELS: Record<Sensor, string> = {
   bme280: 'BME280 (temperatura, umidade e pressão)',
+  htu21d: 'HTU21D (temperatura e umidade)',
   anemometer: 'anemômetro',
   rain_gauge: 'pluviômetro',
   battery: 'bateria',
+};
+
+/** The two station versions, named by their climate sensor. */
+export const CLIMATE_SENSOR_LABELS: Record<ClimateSensor, string> = {
+  bme280: 'BME280 (completa: temperatura, umidade e pressão)',
+  htu21d: 'HTU21D (temperatura e umidade, sem pressão)',
 };
 
 export const POWER_MODE_LABELS: Record<PowerMode, string> = {

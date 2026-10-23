@@ -4,6 +4,8 @@ import {
   type AlertSeverity,
   type AlertStatus,
   type AlertType,
+  CLIMATE_SENSORS,
+  type ClimateSensor,
   COMMANDS,
   type Command,
   type CommandStatus,
@@ -111,6 +113,7 @@ const stationFields = {
   longitude: z.number().min(-180).max(180).nullable(),
   elevationM: z.number().min(-500).max(9000).nullable(),
   timezone: z.string().refine(isValidTimeZone, 'Fuso horário inválido'),
+  climateSensor: z.enum(CLIMATE_SENSORS),
   rainMmPerTip: z.number().positive().max(10),
   windMsPerHz: z.number().positive().max(10),
   tempOffsetC: z.number().min(-10).max(10),
@@ -129,6 +132,7 @@ export const createStationBodySchema = z.object({
   longitude: stationFields.longitude.optional(),
   elevationM: stationFields.elevationM.optional(),
   timezone: stationFields.timezone.optional(),
+  climateSensor: stationFields.climateSensor.optional(),
   rainMmPerTip: stationFields.rainMmPerTip.optional(),
   windMsPerHz: stationFields.windMsPerHz.optional(),
   tempOffsetC: stationFields.tempOffsetC.optional(),
@@ -194,6 +198,8 @@ export interface StationSummary {
   longitude: number | null;
   elevationM: number | null;
   timezone: string;
+  /** Station version: BME280 (with pressure) or HTU21D (no pressure). */
+  climateSensor: ClimateSensor;
   isActive: boolean;
   status: StationStatus;
   statusSeverity: AlertSeverity | null;

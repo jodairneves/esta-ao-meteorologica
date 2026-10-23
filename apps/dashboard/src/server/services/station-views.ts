@@ -13,6 +13,7 @@ import {
 } from '@wx/db';
 import {
   type AlertSeverity,
+  type ClimateSensor,
   type ConnectionState,
   type DeviceConfig,
   liIonPercent,
@@ -39,6 +40,7 @@ interface SummaryRow extends Record<string, unknown> {
   longitude: number | null;
   elevation_m: number | null;
   timezone: string;
+  climate_sensor: ClimateSensor;
   is_active: boolean;
   connection: ConnectionState | null;
   connection_changed_at: unknown;
@@ -80,7 +82,7 @@ export async function listStationSummaries(
   const filter = onlyIds ? sql`where s.id in ${[...onlyIds]}` : sql``;
   const { rows } = await db.execute<SummaryRow>(sql`
     select s.id, s.code, s.name, s.description, s.latitude, s.longitude, s.elevation_m,
-           s.timezone, s.is_active,
+           s.timezone, s.climate_sensor, s.is_active,
            st.connection, st.connection_changed_at, st.next_contact_at, st.last_seen_at,
            st.last_reading_at, st.power_mode, st.battery_mv, st.rssi, st.firmware_version,
            r.ts as r_ts, r.temperature_c, r.humidity_pct, r.pressure_hpa, r.pressure_msl_hpa,
@@ -142,6 +144,7 @@ export async function listStationSummaries(
       longitude: row.longitude,
       elevationM: row.elevation_m,
       timezone: row.timezone,
+      climateSensor: row.climate_sensor,
       isActive: row.is_active,
       status,
       statusSeverity: severity,

@@ -1,4 +1,9 @@
-import { suggestStationCode } from '@wx/shared';
+import {
+  CLIMATE_SENSOR_LABELS,
+  CLIMATE_SENSORS,
+  type ClimateSensor,
+  suggestStationCode,
+} from '@wx/shared';
 import { LocateFixed, Mountain, Save } from 'lucide-react';
 import { type FormEvent, lazy, Suspense, useState } from 'react';
 import type { StationDetail } from '../../../common/api';
@@ -32,6 +37,7 @@ export interface StationFormValues {
   longitude: string;
   elevationM: string;
   timezone: string;
+  climateSensor: ClimateSensor;
 }
 
 export function initialStationValues(station?: StationDetail): StationFormValues {
@@ -45,6 +51,7 @@ export function initialStationValues(station?: StationDetail): StationFormValues
     longitude: text(station?.longitude),
     elevationM: text(station?.elevationM),
     timezone: station?.timezone ?? 'America/Sao_Paulo',
+    climateSensor: station?.climateSensor ?? 'bme280',
   };
 }
 
@@ -64,6 +71,7 @@ export interface StationFormBody {
   longitude: number | null;
   elevationM: number | null;
   timezone: string;
+  climateSensor: ClimateSensor;
 }
 
 /** Identification and location of a station (new and edit share it). */
@@ -140,6 +148,7 @@ export function StationForm({
         longitude: longitude as number | null,
         elevationM: elevation as number | null,
         timezone: values.timezone,
+        climateSensor: values.climateSensor,
       });
     } catch (caught) {
       if (caught instanceof ApiError) {
@@ -202,6 +211,29 @@ export function StationForm({
           </Field>
         )}
       </div>
+      <Field
+        label="Versão da estação"
+        hint={
+          values.climateSensor === 'htu21d'
+            ? 'Sem pressão: o painel não mostra pressão, tendência nem altitude barométrica desta estação.'
+            : 'Completa: temperatura, umidade e pressão (com tendência e altitude barométrica).'
+        }
+        error={errors.climateSensor}
+      >
+        {(props) => (
+          <Select
+            {...props}
+            value={values.climateSensor}
+            onChange={(event) => set('climateSensor')(event.target.value)}
+          >
+            {CLIMATE_SENSORS.map((sensor) => (
+              <option key={sensor} value={sensor}>
+                {CLIMATE_SENSOR_LABELS[sensor]}
+              </option>
+            ))}
+          </Select>
+        )}
+      </Field>
       <Field
         label="Descrição"
         hint="Opcional: onde fica, quem cuida, observações."

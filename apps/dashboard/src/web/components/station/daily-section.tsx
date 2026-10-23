@@ -9,25 +9,33 @@ import { ErrorNotice } from '../ui/misc';
 
 const kmh = (ms: number | null) => (ms === null ? null : msToKmh(ms));
 
-const COLUMNS: { label: string; value: (row: DailyRow) => number | null; digits: number }[] = [
+interface DailyColumn {
+  label: string;
+  value: (row: DailyRow) => number | null;
+  digits: number;
+  /** Only the full version (BME280) measures pressure. */
+  needsBarometer?: boolean;
+}
+
+const COLUMNS: DailyColumn[] = [
   { label: 'Mínima (°C)', value: (row) => row.tempMin, digits: 1 },
   { label: 'Máxima (°C)', value: (row) => row.tempMax, digits: 1 },
   { label: 'Média (°C)', value: (row) => row.tempAvg, digits: 1 },
   { label: 'Umidade (%)', value: (row) => row.humidityAvg, digits: 0 },
-  { label: 'Pressão (hPa)', value: (row) => row.pressureMslAvg, digits: 1 },
+  { label: 'Pressão (hPa)', value: (row) => row.pressureMslAvg, digits: 1, needsBarometer: true },
   { label: 'Chuva (mm)', value: (row) => row.rainMm, digits: 1 },
   { label: 'Vento médio (km/h)', value: (row) => kmh(row.windAvg), digits: 0 },
   { label: 'Rajada máx. (km/h)', value: (row) => kmh(row.gustMax), digits: 0 },
 ];
 
 /** Semicolon-separated with a BOM: opens with accents and decimal commas in Excel pt-BR. */
-function downloadCsv(rows: DailyRow[], fileName: string) {
+function downloadCsv(rows: DailyRow[], columns: DailyColumn[], fileName: string) {
   const bom = String.fromCharCode(0xfeff);
-  const header = ['Dia', ...COLUMNS.map((column) => column.label), 'Leituras'].join(';');
+  const header = ['Dia', ...columns.map((column) => column.label), 'Leituras'].join(';');
   const lines = rows.map((row) =>
     [
       row.day,
-      ...COLUMNS.map((column) => {
+      ...columns.map((column) => {
         const value = column.value(row);
         return value === null ? '' : formatNumber(value, column.digits).replace(/\./g, '');
       }),
@@ -49,13 +57,16 @@ export function DailyTable({
   from,
   to,
   caption,
+  hasBarometer,
 }: {
   code: string;
   from: string;
   to: string;
   caption: string;
+  hasBarometer: boolean;
 }) {
   const daily = useDaily(code, from, to);
+  const columns = COLUMNS.filter((column) => hasBarometer || !column.needsBarometer);
   const rows = [...(daily.data ?? [])].reverse();
 
   return (
@@ -69,7 +80,7 @@ export function DailyTable({
           size="sm"
           icon={Download}
           disabled={!rows.length}
-          onClick={() => downloadCsv(daily.data ?? [], `${code}_resumo-diario.csv`)}
+          onClick={() => downloadCsv(daily.data ?? [], columns, `${code}_resumo-diario.csv`)}
         >
           Baixar CSV
         </Button>
@@ -82,7 +93,7 @@ export function DailyTable({
               <th scope="col" className="px-3 py-2 text-left font-medium whitespace-nowrap">
                 Dia
               </th>
-              {COLUMNS.map((column) => (
+              {columns.map((column) => (
                 <th
                   key={column.label}
                   scope="col"
@@ -102,7 +113,7 @@ export function DailyTable({
                 >
                   {formatDay(row.day)}
                 </th>
-                {COLUMNS.map((column) => (
+                {columns.map((column) => (
                   <td
                     key={column.label}
                     className="px-3 py-1.5 text-right whitespace-nowrap text-ink"
@@ -114,7 +125,7 @@ export function DailyTable({
             ))}
             {daily.isSuccess && rows.length === 0 && (
               <tr>
-                <td colSpan={COLUMNS.length + 1} className="px-3 py-6 text-center text-ink-2">
+                <td colSpan={columns.length + 1} className="px-3 py-6 text-center text-ink-2">
                   Nenhum dia com leituras neste período.
                 </td>
               </tr>

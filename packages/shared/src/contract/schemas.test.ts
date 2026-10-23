@@ -99,6 +99,23 @@ describe('status, health and event', () => {
     expect(parsed.sensors).toEqual({});
   });
 
+  it('accepts the HTU21D station version, which reports no barometer', () => {
+    const parsed = healthMessageSchema.parse({
+      v: 1,
+      ts: 1761181260,
+      fw: '1.0.0',
+      mode: 'normal',
+      sensors: { htu21d: 'ok', bme280: 'absent', wind: 'ok', rain: 'ok' },
+    });
+    expect(parsed.sensors).toEqual({ htu21d: 'ok', bme280: 'absent', wind: 'ok', rain: 'ok' });
+    const reading = telemetryMessageSchema.parse({
+      v: 1,
+      run: 1,
+      readings: [{ seq: 1, ts: 1761181260, dur: 60, temp: 21.5, hum: 70 }],
+    }).readings[0];
+    expect(reading?.pres).toBeNull();
+  });
+
   it('rejects impossible health values', () => {
     const base = { v: 1, ts: 1761181260, fw: '1.0.0', mode: 'normal' };
     expect(healthMessageSchema.safeParse({ ...base, rssi: 10 }).success).toBe(false);

@@ -3,6 +3,7 @@ import {
   checkReadingTimestamp,
   DEVICE_SENSOR_KEYS,
   type HealthMessage,
+  isClimateSensor,
   type MonitoringSettings,
   POWER_MODE_LABELS,
   SENSOR_BY_DEVICE_KEY,
@@ -10,7 +11,9 @@ import {
 import type { CachedStation } from '../stations/cache';
 import { lockStationState, notifyStationState, recordContact } from '../store/station-state';
 import { formatVolts } from '../util/format';
+import { CLIMATE_SENSOR_NAMES, installedClimateSensor } from './climate-sensor';
 import type { IncomingMessage, IngestContext } from './context';
+import { writeThrottledLog } from './logging';
 import { applySensorUpdate, loadSensors } from './sensors';
 
 /** Device diagnostics: history row, live state, sensor statuses and battery/buffer alerts. */
@@ -22,6 +25,7 @@ export async function handleHealth(
 ): Promise<void> {
   const settings = await ctx.monitoringSettings();
   const now = incoming.receivedAt;
+  let fresh = false;
 
   await ctx.db.transaction(async (tx) => {
     const state = await lockStationState(tx, station.id);
@@ -70,12 +74,25 @@ export async function handleHealth(
 
     // A redelivered message refreshes the state but must not repeat the side effects.
     if (inserted) {
+      fresh = true;
       await applyReportedSensors(tx, station, message, now);
       await syncBatteryAlerts(tx, station, message, settings);
       await checkDroppedReadings(tx, station, message, previous);
     }
     await notifyStationState(tx, updated);
   });
+
+  const installed = installedClimateSensor(message);
+  if (fresh && installed && installed !== station.climateSensor) {
+    await writeThrottledLog(ctx, `${station.id}:CLIMATE_SENSOR_MISMATCH`, {
+      level: 'warn',
+      category: 'sensor',
+      code: 'CLIMATE_SENSOR_MISMATCH',
+      message: `${station.label} está com um ${CLIMATE_SENSOR_NAMES[installed]}, mas foi cadastrada como versão ${CLIMATE_SENSOR_NAMES[station.climateSensor]}. Corrija o cadastro ou o sensor.`,
+      stationId: station.id,
+      details: { registered: station.climateSensor, reported: installed },
+    });
+  }
 }
 
 async function applyReportedSensors(
@@ -90,6 +107,9 @@ async function applyReportedSensors(
     const reported = message.sensors[key];
     if (!reported) continue;
     const sensor = SENSOR_BY_DEVICE_KEY[key];
+    // A station only carries the climate sensor of its version; the other one is ignored here
+    // and reported as a mismatch when it is the one actually present.
+    if (isClimateSensor(sensor) && sensor !== station.climateSensor) continue;
     const current = sensors.get(sensor);
 
     if (reported === 'ok') {

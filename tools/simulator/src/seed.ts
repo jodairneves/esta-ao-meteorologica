@@ -58,6 +58,7 @@ try {
       longitude: demo.longitude,
       elevationM: demo.elevationM,
       timezone: demo.timezone,
+      climateSensor: demo.climateSensor,
       rainMmPerTip: demo.rainMmPerTip,
       windMsPerHz: demo.windMsPerHz,
     };
