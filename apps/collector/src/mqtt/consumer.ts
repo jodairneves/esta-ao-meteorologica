@@ -77,6 +77,9 @@ export class MqttConsumer {
       clean: false,
       keepalive: 30,
       reconnectPeriod: 2000,
+      // mqtt.js gives up after a refused login. In a fresh deployment the dashboard creates
+      // our login only after it starts, so keep trying.
+      reconnectOnConnackError: true,
       connectTimeout: 10_000,
       // We subscribe on every connect ourselves (idempotent).
       resubscribe: false,

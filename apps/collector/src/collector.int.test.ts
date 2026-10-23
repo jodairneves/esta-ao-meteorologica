@@ -40,6 +40,7 @@ import mqtt, { type MqttClient } from 'mqtt';
 import pino from 'pino';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { type Collector, createCollector } from './collector';
+import { MqttConsumer } from './mqtt/consumer';
 
 const suffix = randomBytes(3).toString('hex');
 const CODE = `itc-${suffix}`;
@@ -459,6 +460,54 @@ describe('collector (App 1)', () => {
     });
     const [deviceLog] = await logsWithCode('CMD_ACK');
     expect(deviceLog).toMatchObject({ source: 'device', category: 'command' });
+  });
+
+  it('keeps trying to connect while the broker refuses its login', async () => {
+    // A fresh deployment: the dashboard creates the collector's login after the collector
+    // has already tried to connect.
+    const username = `${COLLECTOR_USER}-late`;
+    const password = generatePassword();
+    const warnings: string[] = [];
+    const changes: boolean[] = [];
+    const consumer = new MqttConsumer({
+      url: env('MQTT_URL'),
+      username,
+      password,
+      clientId: username,
+      topics: [stationTopic(`${CODE}-none`, 'telemetry')],
+      handle: async () => {},
+      onFailure: async () => 'drop',
+      waitUntilReady: async () => {},
+      onConnectionChange: (connected) => changes.push(connected),
+      logger: pino({ level: 'warn' }, { write: (line: string) => void warnings.push(line) }),
+    });
+    consumer.start();
+    try {
+      await vi.waitFor(() => expect(warnings.join('')).toContain('Connection refused'), {
+        timeout: 5000,
+      });
+      await ensureClient(dynsec, {
+        username,
+        password,
+        clientid: username,
+        roles: [ROLE_NAMES.collector],
+      });
+      await vi.waitFor(() => expect(changes).toContain(true), { timeout: 10_000 });
+    } finally {
+      await consumer.stop();
+      // Drop the persistent session before removing the login.
+      const session = await mqtt
+        .connectAsync(env('MQTT_URL'), {
+          username,
+          password,
+          clientId: username,
+          clean: true,
+          reconnectPeriod: 0,
+        })
+        .catch(() => null);
+      await session?.endAsync();
+      await deleteClient(dynsec, username).catch(() => {});
+    }
   });
 
   it('pauses while the database is down and loses no reading', async () => {

@@ -47,6 +47,8 @@ export class BrokerAdmin {
       clientId: `wx-dashboard-${hostname()}-${Math.random().toString(16).slice(2, 6)}`,
       clean: true,
       reconnectPeriod: 3000,
+      // mqtt.js gives up after a refused login; Mosquitto may still be creating `admin`.
+      reconnectOnConnackError: true,
       connectTimeout: 10_000,
     });
     this.client = client;
@@ -135,6 +137,12 @@ export class BrokerAdmin {
       this.ready = true;
       this.logger.info({ report }, 'mqtt admin connected and broker bootstrapped');
     } catch (error) {
+      if (!client.connected) {
+        // On the first start the bootstrap gives `admin` the dashboard-ops role, and the broker
+        // drops the connection of a client whose roles change: it runs again on reconnecting.
+        this.logger.warn({ err: error }, 'broker closed the connection during the bootstrap');
+        return;
+      }
       this.logger.error({ err: error }, 'broker bootstrap failed');
     }
   }
