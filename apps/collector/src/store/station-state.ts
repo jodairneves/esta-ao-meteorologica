@@ -3,12 +3,12 @@ import {
   type Executor,
   eq,
   notifyStatement,
+  resolveAlerts,
   type StationStateSnapshot,
   stationState,
 } from '@wx/db';
 import type { RainCounterState } from '@wx/shared';
 import type { CachedStation } from '../stations/cache';
-import { resolveAlerts } from './alerts';
 import { writeLog } from './event-log';
 
 export type StationStateRow = typeof stationState.$inferSelect;

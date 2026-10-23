@@ -6,6 +6,7 @@ export {
   eq,
   gt,
   gte,
+  ilike,
   inArray,
   isNotNull,
   isNull,
@@ -18,7 +19,9 @@ export {
   type SQL,
   sql,
 } from 'drizzle-orm';
+export * from './alerts';
 export * from './client';
+export * from './event-log';
 export * from './migrate';
 export * from './notify';
 export * from './schema';

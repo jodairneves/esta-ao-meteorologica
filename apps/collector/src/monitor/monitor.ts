@@ -5,6 +5,8 @@ import {
   eq,
   inArray,
   lt,
+  openAlert,
+  resolveAlerts,
   stationSensors,
   stationState,
   stations,
@@ -13,7 +15,6 @@ import type { MonitoringSettings } from '@wx/shared';
 import { applySensorUpdate } from '../ingest/sensors';
 import type { Logger } from '../logger';
 import { toCachedStation } from '../stations/cache';
-import { openAlert, resolveAlerts } from '../store/alerts';
 import { writeLog } from '../store/event-log';
 import { lockStationState, notifyStationState, updateStationState } from '../store/station-state';
 import { formatDateTime } from '../util/format';

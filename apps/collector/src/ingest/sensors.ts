@@ -1,7 +1,6 @@
-import { type Executor, eq, stationSensors } from '@wx/db';
+import { type Executor, eq, openAlert, resolveAlerts, stationSensors } from '@wx/db';
 import { type PowerMode, SENSOR_LABELS, type Sensor, type SensorStatus } from '@wx/shared';
 import type { CachedStation } from '../stations/cache';
-import { openAlert, resolveAlerts } from '../store/alerts';
 import { writeLog } from '../store/event-log';
 import { capitalize, formatDateTime } from '../util/format';
 import type { ProcessedReading } from './process-reading';

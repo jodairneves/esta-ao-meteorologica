@@ -1,4 +1,4 @@
-import { and, desc, deviceHealth, type Executor, eq, lt } from '@wx/db';
+import { and, desc, deviceHealth, type Executor, eq, lt, openAlert, resolveAlerts } from '@wx/db';
 import {
   checkReadingTimestamp,
   DEVICE_SENSOR_KEYS,
@@ -8,7 +8,6 @@ import {
   SENSOR_BY_DEVICE_KEY,
 } from '@wx/shared';
 import type { CachedStation } from '../stations/cache';
-import { openAlert, resolveAlerts } from '../store/alerts';
 import { lockStationState, notifyStationState, recordContact } from '../store/station-state';
 import { formatVolts } from '../util/format';
 import type { IncomingMessage, IngestContext } from './context';

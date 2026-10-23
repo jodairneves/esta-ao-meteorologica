@@ -1,6 +1,6 @@
+import { resolveAlerts } from '@wx/db';
 import type { ConnectionState, StatusMessage } from '@wx/shared';
 import type { CachedStation } from '../stations/cache';
-import { resolveAlerts } from '../store/alerts';
 import { type LogEntry, writeLog } from '../store/event-log';
 import {
   lockStationState,

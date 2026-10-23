@@ -1,5 +1,8 @@
-import { alerts, and, CHANNELS, type Executor, eq, inArray, isNull, notifyStatement } from '@wx/db';
 import type { AlertSeverity, AlertType } from '@wx/shared';
+import { and, eq, inArray, isNull } from 'drizzle-orm';
+import type { Executor } from './client';
+import { CHANNELS, notifyStatement } from './notify';
+import { alerts } from './schema';
 
 type AlertRow = typeof alerts.$inferSelect;
 

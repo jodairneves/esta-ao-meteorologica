@@ -49,6 +49,8 @@ export const sessions = pgTable(
     createdAt: createdAt(),
     lastSeenAt: timestamptz('last_seen_at').notNull().defaultNow(),
     expiresAt: timestamptz('expires_at').notNull(),
+    /** "Keep me signed in": the sliding window is days instead of hours. */
+    remember: boolean('remember').notNull().default(false),
     ip: inet('ip'),
     userAgent: text('user_agent'),
   },

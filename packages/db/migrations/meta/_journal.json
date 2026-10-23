@@ -15,6 +15,13 @@
       "when": 1792722905626,
       "tag": "0001_device_health_dedupe",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1792724667852,
+      "tag": "0002_session_remember",
+      "breakpoints": true
     }
   ]
 }
