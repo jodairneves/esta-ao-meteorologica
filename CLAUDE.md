@@ -59,6 +59,7 @@ Sistema de monitoramento de estações meteorológicas DIY (Wemos D1 mini/ESP826
 | `pnpm format` | Formata e organiza imports |
 | `cd firmware && pio run` / `pio run -t upload` / `pio device monitor` | Compila o firmware, grava pelo USB e mostra o log serial (115200) |
 | `firmware/scripts/test-native.sh [-f test_x]` | Testes nativos do firmware (`pio test -e native`); sem `g++` na máquina, roda num contêiner Docker |
+| `firmware/scripts/serial-log.py [--seconds N] [--portal]` | Log serial do D1 mini sem terminal interativo (bom para rodar em segundo plano); `--portal` abre o portal com reset duplo pelo USB |
 | `DEV_MQTT_BIND=0.0.0.0` no `.env` + `pnpm infra:up` | Expõe o Mosquitto de dev na rede local, só durante o teste em bancada |
 
 ## Notas técnicas (armadilhas já encontradas)
@@ -100,6 +101,22 @@ Sistema de monitoramento de estações meteorológicas DIY (Wemos D1 mini/ESP826
 - **Firmware — avisos:** `-Wall -Wextra` valem só para o código do projeto (`build_src_flags`); as bibliotecas compilam com os avisos padrão.
 - **Firmware — deep sleep:** o relógio do sistema não sobrevive; cada despertar refaz o NTP. O que precisa sobreviver fica na memória RTC (`RtcState`, até 512 bytes, com CRC32). Dois resets em até 3 s abrem o portal (flag `resetArmed` na RTC).
 - **Firmware — contrato:** `test/test_payload` compara o JSON exato. Ao mudar o contrato, confira esses JSON com os esquemas zod do `shared`: na Fase 5 isso foi feito com um teste temporário que imprime os payloads, validados por um script `tsx`.
+- **Firmware — gravação e log serial:**
+  - A placa do usuário aparece como `/dev/ttyUSB0` (CH340, MAC `cc:50:e3:08:08:e6`); o usuário está no grupo `dialout`.
+  - O `pio device monitor` precisa de terminal interativo; daqui, use `firmware/scripts/serial-log.py` (pyserial do `python3` do sistema).
+  - Abrir a porta reinicia a placa, mesmo com DTR e RTS desligados no pyserial (o kernel os liga ao abrir). Um pulso no RTS é outro reset, como faz o esptool.
+  - Logo depois de gravar, espere 3 s antes de abrir a serial: o reset do fim da gravação e o da abertura contam como reset duplo e abrem o portal. Durante o portal o `resetArmed` não é limpo, então um reset ali reabre o portal; em 5 min sem uso ele expira e a placa segue com a configuração salva.
+  - O ROM do ESP8266 imprime a 74880 baud, então as primeiras linhas saem ilegíveis a 115200.
+- **Firmware — portal e memória:** o WiFiManager monta a página inteira num `String`, e o `String` do ESP8266 cresce sob medida com `realloc`. Sem um bloco contíguo, o `concat` devolve `false` e o trecho some sem erro. Com 16 redes por perto, os campos do servidor sumiram. Hoje a página tem ~7 KB com 16 redes, e o cliente MQTT só reserva os buffers no `Link::begin()`. Na bancada, o log mostrou ~19 KB livres (maior bloco ~13–19 KB) ao abrir o portal; se crescer a página, meça de novo.
+- **Firmware — rede do usuário:** Wi-Fi UniFi (Ubiquiti) com a mesma rede `X` em 2,4, 5 e 6 GHz; o computador fica nos 6 GHz e o D1 mini nos 2,4 GHz, e eles se enxergam. Na primeira conexão houve conflito de IP: a placa recebeu 10.25.50.110, que um aparelho Samsung também usava (o ARP do computador apontava para o MAC dele). Na reconexão ela pegou 10.25.50.111.
+- **Firmware — portal (WiFiManager 2.0.17):**
+  - Os textos em pt-BR ficam em `firmware/include/wm_strings_pt_br.h`, escolhido por `-DWM_STRINGS_FILE`. A biblioteca é compilada à parte do projeto e só encontra o arquivo por causa do `-I include` nas `build_flags`.
+  - Ao atualizar a biblioteca, compare o `wm_strings_en.h` novo com o nosso: os símbolos precisam ser os mesmos.
+  - O SCons não enxerga o `#include WM_STRINGS_FILE` (include por macro): depois de editar o arquivo de textos, apague `.pio/build/d1_mini/lib*/WiFiManager/WiFiManager.cpp.o` ou rode `pio run -t clean`; senão o binário sai com os textos antigos.
+  - O menu padrão inclui "Update" (envio de firmware pelo navegador), e o `setShowInfoUpdate(false)` não o esconde. Por isso o menu é só `wifi`, e o `setPreOtaUpdateCallback` reinicia a placa se alguém tentar enviar firmware pela rota `/update`, que continua registrada.
+  - Os templates não têm lugar para um título acima da lista de redes; o título entra por JS no `HTTP_SCRIPT`.
+  - O portal cativo já vem da biblioteca: o DHCP do AP entrega a placa como DNS, o DNS responde 192.168.4.1 para tudo e as rotas desconhecidas recebem 302. A raiz `/` redireciona direto para `/wifi`, por uma rota registrada no `setWebServerCallback` (ele roda antes das rotas da biblioteca, e no `ESP8266WebServer` vence a primeira rota registrada).
+- **Firmware — deep sleep na bancada:** sem o fio D0–RST a placa não acorda sozinha. O portal sem configuração dorme depois de 5 min; o botão RESET a traz de volta ao portal (o reset chega como "Deep-Sleep Wake").
 
 ## Estado atual
 
@@ -108,7 +125,7 @@ Sistema de monitoramento de estações meteorológicas DIY (Wemos D1 mini/ESP826
 - **Fase 3 — API do Dashboard:** concluída (2026-10-23).
 - **Fase 4 — Web:** concluída (2026-10-23), com o teste de ponta a ponta usando os dados fictícios do simulador.
 - **Fase 4.5 — Duas versões de estação (BME280 e HTU21D):** concluída (2026-10-23).
-- **Fase 5 — Firmware:** implementada (2026-10-23). Compila e passa nos testes nativos; o teste em bancada com o D1 mini real (roteiro em `docs/hardware.md`) fica com o usuário.
+- **Fase 5 — Firmware:** implementada (2026-10-23). Compila e passa nos testes nativos. Na bancada (2026-10-23), um D1 mini real ainda sem sensores, a estação `bancada`, configurado pelo portal, publica no ambiente de dev: online, leituras, diagnóstico e configuração remota aplicada. Falta ligar os sensores (BME280 ou HTU21D, anemômetro, pluviômetro e o divisor da bateria) e medir a memória com TLS, que depende da Fase 6.
 - **Próximo:** Fase 6 (deploy), já aprovada. Falta o usuário dizer o domínio, onde está o DNS e se começa pela VPS/Coolify ou pelo servidor local.
 - O primeiro admin (`ADMIN_EMAIL`/`ADMIN_PASSWORD`) é criado pela API ao subir (hash argon2id).
 - **Hardware do usuário:** D1 mini, BME280, anemômetro e pluviômetro impressos em 3D (modelos MakerWorld), bateria de lítio e talvez um painel solar pequeno.
@@ -258,3 +275,20 @@ Sistema de monitoramento de estações meteorológicas DIY (Wemos D1 mini/ESP826
   - `DEV_MQTT_BIND` expõe o Mosquitto de dev na rede local para o teste em bancada.
   - A calculadora do anemômetro parte do modelo de referência (80 mm, 3 ímãs).
 - **Pendente (usuário):** teste em bancada, inclusive a memória livre com TLS.
+
+### 2026-10-23 — Bancada: primeira gravação e portal em português
+- Firmware gravado num D1 mini real (CH340, ainda sem sensores): boot e portal OK.
+- **Pedidos do usuário:**
+  - Senha do portal trocada para `12345678`; o guia avisa que ela é fraca para o campo.
+  - Escolha da rede mais clara: portal em português, lista das redes encontradas com título e instrução, campo "Nome da rede" para digitar a que não aparece, botão "Procurar redes de novo" e menu só com "Configurar Wi-Fi".
+- Envio de firmware pelo portal bloqueado: só pelo USB.
+- **Ambiente de dev para a bancada:** `DEV_MQTT_BIND=0.0.0.0` no `.env` e estação de teste `bancada` (versão completa) cadastrada pela API.
+- **Teste em bancada, problemas encontrados e corrigidos:**
+  - Os campos do servidor sumiam do portal com muitas redes por perto, por falta de memória para montar a página. Agora a página é mais leve, o cliente MQTT é criado depois do portal, os campos são obrigatórios, e o portal reabre se a configuração for salva incompleta.
+  - A porta ficou em 8883 com o TLS desligado. Agora a caixa do TLS troca a porta padrão sozinha (1883 ↔ 8883).
+  - A raiz do portal leva direto à lista de redes. O celular do usuário não abre o portal cativo sozinho, e ele digita 192.168.4.1.
+  - Log serial com o servidor usado, o erro do MQTT (`erro -3` = sem conexão TCP; `código 4/5` = credencial), o IP, o gateway, o sinal e o NTP.
+  - Conflito de IP na rede do usuário, explicado em "Notas técnicas".
+- **Resultado:** a estação `bancada` online pelo MQTT (1883, sem TLS) com leituras a cada minuto, alinhadas ao relógio, temperatura, umidade e pressão `null` (sem sensor), bateria `null` (sem divisor), 17 KB de heap livre conectada e alerta `sensor_error` do BME280, esperado.
+- **Docs:** seção "Problemas comuns" no guia de hardware.
+

@@ -92,15 +92,23 @@ pio device monitor       # log serial (115200)
 
 Se a gravação falhar, desconecte o fio D0–RST durante o upload e ligue de novo depois.
 
-A senha da rede de configuração fica em `PORTAL_PASSWORD`, no `platformio.ini` (padrão `estacao-config`). Troque antes de gravar estações de produção.
+A senha da rede de configuração fica em `PORTAL_PASSWORD`, no `platformio.ini` (padrão `12345678`, prático para a bancada e fraco para o campo). Troque antes de gravar estações de produção: quem estiver perto durante o portal aberto pode reconfigurar a estação.
+
+O firmware só é atualizado pelo USB: o portal não aceita envio de firmware.
 
 ## Configurar no portal
 
 1. No painel, cadastre a estação (**Cadastro de estações → Nova estação**), escolhendo a versão. Anote as credenciais MQTT: a senha aparece uma única vez.
 2. Ligue a estação. Sem configuração, ela cria a rede Wi-Fi **Estacao-XXXXXX**.
-3. Conecte o celular a essa rede (senha do `PORTAL_PASSWORD`). A página de configuração abre sozinha.
-4. Escolha o Wi-Fi do local e preencha: servidor MQTT, porta, conexão segura (TLS), código da estação e senha MQTT.
-5. Salve. A estação se conecta e aparece online no painel em alguns segundos.
+3. Conecte o celular a essa rede (senha do `PORTAL_PASSWORD`, padrão `12345678`). A página de configuração abre sozinha, como no Wi-Fi de hotel (portal cativo):
+   - No iPhone, a janela abre logo depois de conectar.
+   - No Android, ela abre sozinha ou aparece a notificação **Fazer login na rede**; toque nela.
+   - Se nada aparecer, desligue os dados móveis e confira se o **DNS privado** está em "Automático" ou "Desativado" (com um provedor fixo, o celular não percebe o portal). Em último caso, acesse <http://192.168.4.1> no navegador.
+4. A página já abre na lista de redes encontradas, da mais forte para a mais fraca. Toque na rede do local e digite a senha dela.
+   - Se a rede não aparecer, digite o nome em **Nome da rede** ou toque em **Procurar redes de novo**, no fim da página.
+   - O D1 mini só enxerga redes de **2,4 GHz**.
+5. Em **Conexão com o servidor**, preencha servidor MQTT, porta, conexão segura (TLS), código da estação e senha MQTT.
+6. Toque em **Salvar**. A estação se conecta e aparece online no painel em alguns segundos. Se não aparecer, a senha do Wi-Fi ou os dados do servidor podem estar errados: abra o portal de novo (abaixo) e confira.
 
 Para abrir o portal de novo (trocar o Wi-Fi ou a senha): **dois toques no botão RESET em até 3 segundos**. Deixar o campo de senha MQTT vazio mantém a senha salva. Se ninguém configurar em 5 minutos, a estação dorme 15 minutos e tenta de novo, para poupar a bateria.
 
@@ -112,7 +120,7 @@ Roteiro para validar o firmware com a placa de verdade, publicando no ambiente d
 
 1. **Broker na rede local:** o Mosquitto de desenvolvimento só aceita conexões da própria máquina. Durante o teste, coloque `DEV_MQTT_BIND=0.0.0.0` no `.env` e rode `pnpm infra:up`. Depois do teste, remova a linha e rode `pnpm infra:up` de novo.
 2. Rode `pnpm dev` e cadastre uma estação de teste no painel, na versão do sensor que estiver ligado.
-3. Grave o firmware e configure pelo portal: servidor = IP do computador na rede, porta **1883**, TLS **desligado**.
+3. Grave o firmware e configure pelo portal: servidor = IP do computador na rede, porta **1883**, TLS **desligado** (ao desmarcar o TLS, a porta passa sozinha de 8883 para 1883).
 4. Confira, no monitor serial e no painel:
    - [ ] A estação aparece **Online** e o log mostra o sensor detectado (`sensor de clima: bme280` ou `htu21d`).
    - [ ] Chega uma leitura por minuto, com temperatura e umidade coerentes (e pressão na versão completa).
@@ -123,3 +131,22 @@ Roteiro para validar o firmware com a placa de verdade, publicando no ambiente d
    - [ ] Desligar o Wi-Fi do roteador por alguns minutos: ao voltar, as leituras do período chegam do buffer.
    - [ ] Com o perfil **Sempre Economia**, a estação aparece **Dormindo** e envia em lote a cada 10 minutos.
 5. **TLS (produção):** com o servidor da Fase 6, configure a porta **8883** com TLS ligado e confira se a memória livre segue acima de ~8 KB com a conexão segura.
+
+## Problemas comuns
+
+O log serial (`pio device monitor`, 115200 baud) mostra para onde a estação tenta se conectar e por que falhou:
+
+```
+[wx] servidor MQTT 10.25.50.106:1883 sem TLS, estação bancada
+[wx] MQTT falhou com 10.25.50.106:8883 (erro -3, código 0); IP 10.25.50.110, gateway 10.25.50.1, sinal -72 dBm
+```
+
+| Sintoma | Causa provável | O que fazer |
+|---|---|---|
+| `erro -3` (sem conexão com o servidor) | Porta errada (1883 sem TLS, 8883 com TLS), endereço do servidor errado ou outro aparelho com o mesmo IP da estação | Confira servidor e porta no portal. Se continuar, veja no roteador se outro aparelho usa o IP da estação e reserve um IP para ela |
+| `código 4` ou `código 5` | Código da estação ou senha MQTT errados | Confira o código no painel. Se a senha se perdeu, use **Gerar nova senha** em **Cadastro de estações → (estação) → Credenciais MQTT** e informe a nova no portal |
+| A rede do local não aparece na lista | O D1 mini só enxerga redes de 2,4 GHz | Use a rede de 2,4 GHz do roteador; muitos roteadores usam o mesmo nome nas duas faixas |
+| A página do portal não abre sozinha | DNS privado fixo no celular ou dados móveis ligados | Veja o passo 3 de "Configurar no portal" |
+| A placa some alguns minutos depois de abrir o portal | Deep sleep sem o fio D0–RST | Aperte RESET. Na estação definitiva, ligue o fio |
+| Faltam os campos do servidor no portal | Memória insuficiente para montar a página (muitas redes por perto) | Toque em **Procurar redes de novo**. O log mostra a memória livre ao abrir o portal ("heap livre", "maior bloco") |
+
