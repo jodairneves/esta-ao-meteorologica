@@ -93,6 +93,9 @@ bool openPortal(MqttSettings& settings, bool& saved) {
   manager.addParameter(&password);
 
   const bool online = manager.startConfigPortal(portalName().c_str(), PORTAL_PASSWORD);
+  // Timed out: the fields still hold their initial texts, and the TLS box always holds "1"
+  // (only `checked` tells its state), so nothing is copied back.
+  if (!saved) return online;
 
   copy(settings.host, sizeof(settings.host), host.getValue());
   settings.port = static_cast<uint16_t>(strtoul(portField.getValue(), nullptr, 10));
@@ -111,13 +114,14 @@ bool runConfigPortal(MqttSettings& settings) {
   for (;;) {
     bool saved = false;
     const bool online = openPortal(settings, saved);
+    // Timed out: nothing changed, and the caller goes on with the settings saved before (if any).
+    if (!saved) return false;
     if (settings.complete()) {
       saveMqttSettings(settings);
       return online;
     }
     // Saved without the server fields (a page cut short, say): ask again rather than sleep with
-    // half a configuration. A portal that timed out still gives up.
-    if (!saved) return false;
+    // half a configuration.
     Serial.printf_P(PSTR("[wx] configuração sem os dados do servidor: portal aberto de novo\n"));
   }
 }

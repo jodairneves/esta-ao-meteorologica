@@ -10,7 +10,8 @@ namespace wx {
  * station code and password. Blocks until five minutes go by without use; saving without the
  * server fields opens it again.
  *
- * Returns true when the station got online with complete settings (saved to flash).
+ * Returns true when the station got online with complete settings (saved to flash). A portal
+ * that times out changes nothing.
  */
 bool runConfigPortal(MqttSettings& settings);
 

@@ -289,6 +289,7 @@ Sistema de monitoramento de estações meteorológicas DIY (Wemos D1 mini/ESP826
   - A raiz do portal leva direto à lista de redes. O celular do usuário não abre o portal cativo sozinho, e ele digita 192.168.4.1.
   - Log serial com o servidor usado, o erro do MQTT (`erro -3` = sem conexão TCP; `código 4/5` = credencial), o IP, o gateway, o sinal e o NTP.
   - Conflito de IP na rede do usuário, explicado em "Notas técnicas".
+  - Defeito antigo: quando o portal expirava sem salvar, o firmware copiava os campos de volta, e a caixa do TLS (valor sempre `"1"`; só o `checked` muda) ligava o TLS na flash. Agora, se não houver salvamento, nada é copiado.
 - **Resultado:** a estação `bancada` online pelo MQTT (1883, sem TLS) com leituras a cada minuto, alinhadas ao relógio, temperatura, umidade e pressão `null` (sem sensor), bateria `null` (sem divisor), 17 KB de heap livre conectada e alerta `sensor_error` do BME280, esperado.
 - **Docs:** seção "Problemas comuns" no guia de hardware.
 
