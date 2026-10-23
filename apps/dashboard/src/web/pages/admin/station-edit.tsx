@@ -5,7 +5,7 @@ import { useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import type { StationCredentials, StationDetail, UpdateStationBody } from '../../../common/api';
 import { api } from '../../api/client';
-import { keys, useStation } from '../../api/queries';
+import { keys, useStation, useSystemStatus } from '../../api/queries';
 import { CalibrationForm } from '../../components/admin/calibration-form';
 import { CommandsPanel } from '../../components/admin/commands-panel';
 import { CredentialsCard } from '../../components/admin/credentials-card';
@@ -35,6 +35,7 @@ type Tab = (typeof TAB_VALUES)[number];
 
 function CredentialsTab({ station, onRotated }: { station: StationDetail; onRotated: () => void }) {
   const toast = useToast();
+  const login = useSystemStatus().data?.broker.login;
   const [confirming, setConfirming] = useState(false);
   const [rotating, setRotating] = useState(false);
   const [credentials, setCredentials] = useState<StationCredentials | null>(null);
@@ -51,6 +52,18 @@ function CredentialsTab({ station, onRotated }: { station: StationDetail; onRota
       setRotating(false);
     }
   };
+
+  // Until the system status arrives there is nothing reliable to say about the login.
+  if (login === undefined) return null;
+  if (login === 'shared') {
+    return (
+      <p className="max-w-2xl text-sm text-ink-2">
+        Este painel usa um broker compartilhado: a estação entra com o usuário e a senha do próprio
+        broker, e não há senha por estação para gerar. Para trocar a senha, troque-a no broker e
+        configure de novo cada estação.
+      </p>
+    );
+  }
 
   return (
     <div className="flex max-w-2xl flex-col gap-4 text-sm text-ink-2">
@@ -97,7 +110,7 @@ function CredentialsTab({ station, onRotated }: { station: StationDetail; onRota
           </Button>
         }
       >
-        {credentials && <CredentialsCard credentials={credentials} />}
+        {credentials && <CredentialsCard code={station.code} credentials={credentials} />}
       </Dialog>
     </div>
   );
@@ -113,6 +126,8 @@ function RemoveTab({
   const toast = useToast();
   const navigate = useNavigate();
   const client = useQueryClient();
+  // A shared broker login cannot be blocked for one station: only its data is ignored.
+  const shared = useSystemStatus().data?.broker.login === 'shared';
   const [deleting, setDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmToggle, setConfirmToggle] = useState(false);
@@ -156,8 +171,12 @@ function RemoveTab({
         </h3>
         <p className="mt-1 text-sm text-ink-2">
           {station.isActive
-            ? 'A estação some da visão geral, o broker recusa a conexão dela e os alertas param. Todo o histórico é mantido.'
-            : 'A estação volta a poder se conectar e reaparece na visão geral.'}
+            ? shared
+              ? 'A estação some da visão geral, o que ela enviar passa a ser ignorado e os alertas param. Ela continua conectada ao broker compartilhado. Todo o histórico é mantido.'
+              : 'A estação some da visão geral, o broker recusa a conexão dela e os alertas param. Todo o histórico é mantido.'
+            : shared
+              ? 'Os dados da estação voltam a ser gravados e ela reaparece na visão geral.'
+              : 'A estação volta a poder se conectar e reaparece na visão geral.'}
         </p>
         <Button
           className="mt-3"
@@ -170,8 +189,9 @@ function RemoveTab({
       <section className="rounded-md border border-critical/50 px-4 py-4">
         <h3 className="heading text-sm">Excluir a estação</h3>
         <p className="mt-1 text-sm text-ink-2">
-          Apaga a estação, todas as leituras, o histórico de saúde e o usuário MQTT. Não dá para
-          desfazer. Se quiser só parar de receber dados, desative.
+          Apaga a estação, todas as leituras, o histórico de saúde e
+          {shared ? ' as mensagens que ela deixou guardadas no broker' : ' o usuário MQTT'}. Não dá
+          para desfazer. Se quiser só parar de receber dados, desative.
         </p>
         <Button
           className="mt-3"
@@ -193,8 +213,12 @@ function RemoveTab({
       >
         <p>
           {station.isActive
-            ? 'O D1 mini não conseguirá mais enviar leituras até a estação ser reativada.'
-            : 'O D1 mini volta a ser aceito pelo broker com a mesma senha.'}
+            ? shared
+              ? 'O que o D1 mini enviar será ignorado até a estação ser reativada.'
+              : 'O D1 mini não conseguirá mais enviar leituras até a estação ser reativada.'
+            : shared
+              ? 'O que o D1 mini enviar volta a ser gravado.'
+              : 'O D1 mini volta a ser aceito pelo broker com a mesma senha.'}
         </p>
       </ConfirmDialog>
       <ConfirmDialog

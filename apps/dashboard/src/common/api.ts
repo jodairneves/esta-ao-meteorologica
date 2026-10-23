@@ -261,13 +261,22 @@ export interface LocalPageAccess {
   password: string | null;
 }
 
+/**
+ * How stations log in to the broker (design §3.10): `station`, a login of their own managed by the
+ * dashboard; `shared`, the single login of a broker run by someone else.
+ */
+export type MqttLogin = 'station' | 'shared';
+
 export interface StationCredentials {
+  /** With `login: 'shared'`, the broker's single login. */
   username: string;
-  password: string;
+  /** Null with `login: 'shared'`: it is the broker's own password, which the dashboard does not keep. */
+  password: string | null;
   clientId: string;
   host: string;
   port: number;
   tls: boolean;
+  login: MqttLogin;
 }
 
 export interface CreateStationResponse {
@@ -489,6 +498,7 @@ export interface SystemStatus {
   dashboard: { version: string; startedAt: string; sseClients: number };
   broker: {
     connected: boolean;
+    login: MqttLogin;
     clients: number | null;
     uptime: string | null;
     version: string | null;

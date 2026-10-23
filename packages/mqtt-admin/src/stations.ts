@@ -51,6 +51,11 @@ export async function removeStation(
   code: string,
 ): Promise<void> {
   await deleteClient(dynsec, code);
+  await clearStationRetained(mqtt, code);
+}
+
+/** Clears the retained status and configuration a deleted station leaves on the broker. */
+export async function clearStationRetained(mqtt: MqttClient, code: string): Promise<void> {
   for (const kind of ['status', 'config'] as const) {
     await mqtt.publishAsync(stationTopic(code, kind), '', { qos: 1, retain: true });
   }

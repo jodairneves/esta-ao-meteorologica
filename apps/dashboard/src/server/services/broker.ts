@@ -1,6 +1,7 @@
 import { hostname } from 'node:os';
 import {
   bootstrapBroker,
+  clearStationRetained,
   DynsecClient,
   provisionStation,
   removeStation,
@@ -15,7 +16,8 @@ import {
   stationTopic,
 } from '@wx/shared';
 import mqtt, { type MqttClient } from 'mqtt';
-import type { DashboardConfig } from '../config';
+import type { MqttLogin } from '../../common/api';
+import type { MqttConfig } from '../config';
 import { HttpError } from '../http';
 import type { Logger } from '../logger';
 
@@ -26,8 +28,9 @@ const SYS_TOPICS = [
 ] as const;
 
 /**
- * The dashboard's administrative MQTT connection: station credentials (Dynamic Security),
- * retained configuration and commands. It never subscribes to telemetry (design §2.2).
+ * The dashboard's MQTT connection: retained configuration and commands and, when each station has
+ * a login of its own, those logins (Dynamic Security). With a shared broker everyone uses the
+ * broker's single login (design §3.10). It never subscribes to telemetry (design §2.2).
  */
 export class BrokerAdmin {
   private client: MqttClient | null = null;
@@ -36,14 +39,17 @@ export class BrokerAdmin {
   private readonly sys = new Map<string, string>();
 
   constructor(
-    private readonly config: DashboardConfig['mqtt'],
+    private readonly config: MqttConfig,
     private readonly logger: Logger,
   ) {}
 
   start(): void {
+    const login =
+      this.config.mode === 'per-station'
+        ? { username: this.config.adminUsername, password: this.config.adminPassword }
+        : { username: this.config.username, password: this.config.password };
     const client = mqtt.connect(this.config.url, {
-      username: this.config.adminUsername,
-      password: this.config.adminPassword,
+      ...login,
       clientId: `wx-dashboard-${hostname()}-${Math.random().toString(16).slice(2, 6)}`,
       clean: true,
       reconnectPeriod: 3000,
@@ -52,7 +58,7 @@ export class BrokerAdmin {
       connectTimeout: 10_000,
     });
     this.client = client;
-    this.dynsec = new DynsecClient(client);
+    if (this.config.mode === 'per-station') this.dynsec = new DynsecClient(client);
 
     client.on('connect', () => void this.onConnect());
     client.on('close', () => {
@@ -72,6 +78,16 @@ export class BrokerAdmin {
 
   get connected(): boolean {
     return this.ready && Boolean(this.client?.connected);
+  }
+
+  /** How stations log in: a login of their own, or the shared broker's single login. */
+  get login(): MqttLogin {
+    return this.config.mode === 'shared' ? 'shared' : 'station';
+  }
+
+  /** The shared broker's single login, which stations use too; null with one login per station. */
+  get sharedUsername(): string | null {
+    return this.config.mode === 'shared' ? this.config.username : null;
   }
 
   /** Broker facts from $SYS (updated by Mosquitto every few seconds). */
@@ -97,6 +113,10 @@ export class BrokerAdmin {
   }
 
   async remove(code: string): Promise<void> {
+    if (this.config.mode === 'shared') {
+      await clearStationRetained(this.requireClient(), code);
+      return;
+    }
     await removeStation(this.requireDynsec(), this.requireClient(), code);
   }
 
@@ -126,16 +146,25 @@ export class BrokerAdmin {
 
   private async onConnect(): Promise<void> {
     const client = this.client;
-    const dynsec = this.dynsec;
-    if (!client || !dynsec) return;
+    if (!client) return;
     try {
-      const report = await bootstrapBroker(dynsec, {
-        collectorPassword: this.config.collectorPassword,
-        adminUsername: this.config.adminUsername,
+      const report =
+        this.config.mode === 'per-station' && this.dynsec
+          ? await bootstrapBroker(this.dynsec, {
+              collectorPassword: this.config.collectorPassword,
+              adminUsername: this.config.adminUsername,
+            })
+          : null;
+      await client.subscribeAsync([...SYS_TOPICS], { qos: 0 }).catch((error: unknown) => {
+        // A broker run by someone else may keep $SYS to itself: the status page just shows less.
+        if (!client.connected) throw error;
+        this.logger.warn({ err: error }, 'broker refused the $SYS subscription');
       });
-      await client.subscribeAsync([...SYS_TOPICS], { qos: 0 });
       this.ready = true;
-      this.logger.info({ report }, 'mqtt admin connected and broker bootstrapped');
+      this.logger.info(
+        { login: this.login, report },
+        report ? 'mqtt admin connected and broker bootstrapped' : 'mqtt connected (shared login)',
+      );
     } catch (error) {
       if (!client.connected) {
         // On the first start the bootstrap gives `admin` the dashboard-ops role, and the broker
@@ -159,6 +188,10 @@ export class BrokerAdmin {
   }
 
   private requireDynsec(): DynsecClient {
+    if (this.config.mode === 'shared') {
+      // The services never ask for it with a shared login: there are no station logins to manage.
+      throw new Error('station logins are not managed with a shared broker login');
+    }
     this.requireClient();
     if (!this.dynsec) throw new HttpError(503, 'BROKER_UNAVAILABLE', 'Broker MQTT indisponível');
     return this.dynsec;

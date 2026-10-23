@@ -59,7 +59,9 @@ export default function NewStationPage() {
           </Button>
         }
       >
-        {created && <CredentialsCard credentials={created.credentials} />}
+        {created && (
+          <CredentialsCard code={created.station.code} credentials={created.credentials} />
+        )}
       </Dialog>
     </div>
   );

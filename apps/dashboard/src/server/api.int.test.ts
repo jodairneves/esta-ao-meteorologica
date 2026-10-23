@@ -95,6 +95,7 @@ describe('dashboard API', () => {
   let hub: EventHub;
   let app: App;
   let admin: ReturnType<typeof clientFor>;
+  let config: DashboardConfig;
   const stationClients: MqttClient[] = [];
   const createdCodes: string[] = [];
   const suffix = randomBytes(2).toString('hex');
@@ -102,7 +103,7 @@ describe('dashboard API', () => {
   const connectStation = (credentials: StationCredentials) =>
     mqtt.connectAsync(env('MQTT_URL'), {
       username: credentials.username,
-      password: credentials.password,
+      password: credentials.password ?? undefined,
       clientId: credentials.clientId,
       clean: true,
       reconnectPeriod: 0,
@@ -119,9 +120,10 @@ describe('dashboard API', () => {
     await prepareDatabase(pool);
 
     const logger = pino({ level: 'silent' });
-    const config: DashboardConfig = {
+    config = {
       databaseUrl,
       mqtt: {
+        mode: 'per-station',
         url: env('MQTT_URL'),
         adminUsername: process.env.MQTT_ADMIN_USERNAME ?? 'admin',
         adminPassword: env('MOSQUITTO_DYNSEC_PASSWORD'),
@@ -669,6 +671,112 @@ describe('dashboard API', () => {
         retention: { ...current.retention, logsDays: 60 },
       });
       expect(saved.json().retention.logsDays).toBe(60);
+    });
+  });
+
+  describe('with a shared broker login', () => {
+    // A broker run by someone else, with one login for everyone, stations included (design
+    // §3.10). The dev broker's admin stands in for that login: it publishes the configuration and
+    // reads $SYS, which is all the dashboard needs in this mode.
+    const sharedUsername = process.env.MQTT_ADMIN_USERNAME ?? 'admin';
+    const connectObserver = () =>
+      mqtt.connectAsync(env('MQTT_URL'), {
+        username: sharedUsername,
+        password: env('MOSQUITTO_DYNSEC_PASSWORD'),
+        clean: true,
+        reconnectPeriod: 0,
+      });
+    let sharedApp: App;
+    let sharedBroker: BrokerAdmin;
+    let shared: ReturnType<typeof clientFor>;
+    let code: string;
+
+    beforeAll(async () => {
+      const logger = pino({ level: 'silent' });
+      const sharedConfig: DashboardConfig = {
+        ...config,
+        mqtt: {
+          mode: 'shared',
+          url: env('MQTT_URL'),
+          username: sharedUsername,
+          password: env('MOSQUITTO_DYNSEC_PASSWORD'),
+        },
+      };
+      sharedBroker = new BrokerAdmin(sharedConfig.mqtt, logger);
+      sharedBroker.start();
+      await vi.waitFor(() => expect(sharedBroker.connected).toBe(true), { timeout: 10_000 });
+      sharedApp = await buildApp({
+        config: sharedConfig,
+        db,
+        logger,
+        broker: sharedBroker,
+        hub: new EventHub(logger),
+        version: 'test',
+        startedAt: new Date(),
+      });
+      await sharedApp.ready();
+      shared = (await login(sharedApp, ADMIN.email, ADMIN.password)).client;
+    });
+
+    afterAll(async () => {
+      await sharedApp?.close();
+      await sharedBroker?.stop();
+    });
+
+    it('registers a station that uses the broker login', async () => {
+      const response = await shared.post('/stations', { name: `Compartilhada ${suffix}` });
+      expect(response.statusCode).toBe(201);
+      const created = response.json() as CreateStationResponse;
+      code = created.station.code;
+      expect(created.credentials).toEqual({
+        login: 'shared',
+        username: sharedUsername,
+        password: null,
+        clientId: stationClientId(code),
+        host: 'mqtt.test.local',
+        port: 8883,
+        tls: true,
+      });
+      expect(created.station.mqttCredentialsSetAt).toBeNull();
+
+      // The configuration is retained for the station, as with a login of its own.
+      const observer = await connectObserver();
+      const retained = new Promise<string>((resolve) =>
+        observer.on('message', (topic, payload) => {
+          if (topic === stationTopic(code, 'config')) resolve(payload.toString());
+        }),
+      );
+      await observer.subscribeAsync(stationTopic(code, 'config'), { qos: 1 });
+      expect(JSON.parse(await retained)).toMatchObject({ v: 1, rev: 1 });
+      await observer.endAsync();
+    });
+
+    it('has no station password to replace', async () => {
+      const response = await shared.post(`/stations/${code}/credentials`);
+      expect(response.statusCode).toBe(409);
+      expect(response.json()).toMatchObject({ error: { code: 'SHARED_BROKER_LOGIN' } });
+    });
+
+    it('disables a station without a login to block', async () => {
+      const response = await shared.patch(`/stations/${code}`, { isActive: false });
+      expect(response.statusCode).toBe(200);
+      expect((response.json() as StationDetail).isActive).toBe(false);
+    });
+
+    it('reports the shared login in the system status', async () => {
+      const status = (await shared.get('/system/status')).json() as SystemStatus;
+      expect(status.broker).toMatchObject({ connected: true, login: 'shared' });
+    });
+
+    it('clears the retained messages of a deleted station', async () => {
+      expect((await shared.del(`/stations/${code}`, { confirmCode: code })).statusCode).toBe(204);
+      const observer = await connectObserver();
+      const received: string[] = [];
+      observer.on('message', (_topic, payload) => received.push(payload.toString()));
+      await observer.subscribeAsync(stationTopic(code, 'config'), { qos: 1 });
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await observer.endAsync();
+      expect(received.filter((payload) => payload.length > 0)).toEqual([]);
     });
   });
 

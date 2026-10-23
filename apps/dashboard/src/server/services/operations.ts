@@ -240,7 +240,7 @@ export async function getSystemStatus(
       startedAt: dashboard.startedAt.toISOString(),
       sseClients: dashboard.sseClients,
     },
-    broker: { connected: broker.connected, ...broker.info },
+    broker: { connected: broker.connected, login: broker.login, ...broker.info },
     database: {
       sizeBytes: dbRows[0]?.size ?? 0,
       readingsEstimate: Math.round(dbRows[0]?.readings ?? 0),

@@ -53,17 +53,19 @@ type CreateInput = z.output<typeof createStationBodySchema>;
 type UpdateInput = z.output<typeof updateStationBodySchema>;
 
 function credentialsFor(
+  deps: StationServiceDeps,
   code: string,
-  password: string,
-  publicMqtt: DashboardConfig['publicMqtt'],
+  password: string | null,
 ): StationCredentials {
+  const sharedUsername = deps.broker.sharedUsername;
   return {
-    username: code,
+    username: sharedUsername ?? code,
     password,
     clientId: stationClientId(code),
-    host: publicMqtt.host,
-    port: publicMqtt.port,
-    tls: publicMqtt.tls,
+    host: deps.publicMqtt.host,
+    port: deps.publicMqtt.port,
+    tls: deps.publicMqtt.tls,
+    login: deps.broker.login,
   };
 }
 
@@ -103,7 +105,8 @@ async function freeCode(db: Database, base: string): Promise<string> {
 
 /**
  * Registers a station: database row, MQTT credentials and retained configuration, all or
- * nothing (the MQTT steps run inside the transaction). The password is returned only here.
+ * nothing (the MQTT steps run inside the transaction). The password is returned only here. With a
+ * shared broker the station uses the broker's own login, so there is no password to create.
  */
 export async function createStation(
   deps: StationServiceDeps,
@@ -112,7 +115,7 @@ export async function createStation(
 ): Promise<CreateStationResponse> {
   const { db, broker } = deps;
   const code = input.code ?? (await freeCode(db, suggestStationCode(input.name)));
-  const password = generatePassword();
+  const password = broker.login === 'station' ? generatePassword() : null;
   const localPassword = generateLocalPassword();
 
   const created = await db.transaction(async (tx) => {
@@ -133,7 +136,7 @@ export async function createStation(
         humOffsetPct: input.humOffsetPct ?? 0,
         presOffsetHpa: input.presOffsetHpa ?? 0,
         deviceConfig: DEFAULT_DEVICE_CONFIG,
-        mqttCredentialsSetAt: new Date(),
+        mqttCredentialsSetAt: password ? new Date() : null,
         localPassword,
         createdBy: actor.id,
       })
@@ -142,7 +145,7 @@ export async function createStation(
     if (!row) throw conflict(`Já existe uma estação com o código "${code}"`, 'STATION_CODE_TAKEN');
 
     await tx.insert(stationState).values({ stationId: row.id });
-    await broker.provision(code, password);
+    if (password) await broker.provision(code, password);
     await broker.publishConfig(code, row.deviceConfigRev, row.deviceConfig, localPassword);
     await notifyChanged(tx, row.id);
     await audit(tx, {
@@ -156,7 +159,7 @@ export async function createStation(
 
   return {
     station: await getStationDetail(db, created.id),
-    credentials: credentialsFor(code, password, deps.publicMqtt),
+    credentials: credentialsFor(deps, code, password),
   };
 }
 
@@ -174,7 +177,12 @@ export async function updateStation(
       .update(stations)
       .set({ ...input, updatedAt: new Date() })
       .where(eq(stations.id, station.id));
-    if (input.isActive !== undefined && input.isActive !== station.isActive) {
+    // A shared login cannot be blocked for one station: the collector ignores its data instead.
+    if (
+      broker.login === 'station' &&
+      input.isActive !== undefined &&
+      input.isActive !== station.isActive
+    ) {
       await broker.setEnabled(station.code, input.isActive);
     }
     const versionChanged =
@@ -248,6 +256,12 @@ export async function rotateCredentials(
   actor: SessionUser,
 ): Promise<StationCredentials> {
   const { db, broker } = deps;
+  if (broker.login === 'shared') {
+    throw conflict(
+      'Com o broker compartilhado, as estações usam a senha do próprio broker: troque-a no broker',
+      'SHARED_BROKER_LOGIN',
+    );
+  }
   const station = await findStation(db, idOrCode);
   const password = generatePassword();
 
@@ -266,7 +280,7 @@ export async function rotateCredentials(
     });
   });
 
-  return credentialsFor(station.code, password, deps.publicMqtt);
+  return credentialsFor(deps, station.code, password);
 }
 
 /** New desired configuration: bumps the revision and publishes it retained. */

@@ -36,7 +36,7 @@ test('an admin registers a station and receives its MQTT credentials once', asyn
 
   const dialog = page.getByRole('dialog', { name: `${stationName} cadastrada` });
   await expect(dialog).toBeVisible();
-  await expect(dialog.getByText('Senha', { exact: true })).toBeVisible();
+  await expect(dialog.getByText('Senha MQTT', { exact: true })).toBeVisible();
   await expect(dialog.getByText(code, { exact: true }).first()).toBeVisible();
   await dialog.getByRole('button', { name: 'Anotei, continuar' }).click();
 
