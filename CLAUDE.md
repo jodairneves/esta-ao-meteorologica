@@ -185,11 +185,9 @@ Sistema de monitoramento de estações meteorológicas DIY (Wemos D1 mini/ESP826
 - **Bancada, pendências:**
   - O D1 mini (MAC `cc:50:e3:08:08:e6`) foi apagado com `pio run -t erase` e recebeu o firmware novo. Está configurado com a estação `estacao-teste`, o servidor do DDNS de casa e o usuário do broker.
   - O Wi-Fi salvo é o hotspot de 2,4 GHz do celular do usuário. Ele o criou para testar o acesso externo: a estação sai pelos dados móveis e volta pelo DDNS de casa.
-  - O Wi-Fi não conecta: o log repete "Wi-Fi indisponível" depois de 15 s. Suspeitas:
-    - hotspot desligado ou invisível;
-    - segurança WPA3 (o ESP8266 só faz WPA2; no iPhone, "Maximizar compatibilidade"; no Android, "WPA2-Personal");
-    - senha digitada errada.
-  - Próximo passo: refazer o Wi-Fi no portal com o log serial aberto, porque o WiFiManager mostra o resultado da conexão.
+  - O Wi-Fi não conecta. O log de diagnóstico mostra o hotspot visível (canal 6, -38 dBm, WPA2) e que **a rede recusou a senha**.
+  - Próximo passo: o usuário digita de novo a senha do hotspot no portal. A senha deve ter só caracteres comuns, sem acento ou ç.
+  - O portal pode ser aberto pelo USB com `serial-log.py --portal`.
   - Investigar um reset de watchdog (`rst cause:4`, cerca de 13 s depois do boot) no perfil Sobrevivência. Aconteceu uma vez, com o estado antigo da memória RTC (veja a nota de 2026-10-23 em "Registro").
 - O primeiro admin (`ADMIN_EMAIL`/`ADMIN_PASSWORD`) é criado pela API ao subir (hash argon2id).
 - **Hardware do usuário:** D1 mini, BME280, anemômetro e pluviômetro impressos em 3D (modelos MakerWorld), bateria de lítio e talvez um painel solar pequeno.
@@ -468,3 +466,6 @@ Sistema de monitoramento de estações meteorológicas DIY (Wemos D1 mini/ESP826
   - Um reset pelo RST durante o sono profundo conta como `REASON_DEEP_SLEEP_AWAKE`. Por isso a placa voltou no perfil Sobrevivência do estado antigo e teve um reset de watchdog.
   - Depois disso, no perfil Normal, ficou em "Wi-Fi indisponível" (veja "Bancada, pendências").
   - Abrir a porta serial reinicia a placa. O `serial-log.py` termina com `SerialException` quando o cabo é desconectado.
+- **Correções no firmware (bancada):**
+  - **Bateria:** leitura abaixo de 2,5 V (`kMinBatteryMv`) passou a valer como "sem bateria". Sem o divisor, o ruído no A0 virava ~200 mV, e três leituras seguidas punham o perfil automático em Sobrevivência: a placa dormia sem acordar (sem o fio D0–RST) e sumia da rede.
+  - **Wi-Fi:** a falha agora tem motivo no log ("recusou a senha", "não foi encontrada", "recusou a conexão", "não respondeu"). Na primeira falha de cada boot, o log mostra também como a busca vê a rede: canal, sinal e segurança.

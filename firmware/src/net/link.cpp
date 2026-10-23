@@ -69,7 +69,12 @@ bool Link::wifiUp(RtcState& rtc, uint32_t timeoutMs) {
 
   const String ssid = WiFi.SSID();
   const String psk = WiFi.psk();
-  if (ssid.length() == 0) return false;
+  strncpy(wifiSsid_, ssid.c_str(), sizeof(wifiSsid_) - 1);
+  wifiSsid_[sizeof(wifiSsid_) - 1] = '\0';
+  if (ssid.length() == 0) {
+    wifiFailure_ = kNoSavedNetwork;
+    return false;
+  }
   const bool remembered = rtc.wifiChannel != 0;
   if (remembered) {
     WiFi.begin(ssid.c_str(), psk.c_str(), rtc.wifiChannel, rtc.bssid, true);
@@ -87,13 +92,31 @@ bool Link::wifiUp(RtcState& rtc, uint32_t timeoutMs) {
     const uint32_t retry = millis();
     while (WiFi.status() != WL_CONNECTED && millis() - retry < timeoutMs) delay(50);
   }
-  if (WiFi.status() != WL_CONNECTED) return false;
+  if (WiFi.status() != WL_CONNECTED) {
+    wifiFailure_ = WiFi.status();
+    return false;
+  }
 
   rtc.wifiChannel = static_cast<uint8_t>(WiFi.channel());
   memcpy(rtc.bssid, WiFi.BSSID(), sizeof(rtc.bssid));
   if (hadWifi_) wifiReconnects_++;
   hadWifi_ = true;
   return true;
+}
+
+Link::WifiSighting Link::findNetwork() {
+  WifiSighting sighting;
+  const int8_t count = WiFi.scanNetworks();
+  for (int8_t i = 0; i < count; i++) {
+    if (strcmp(WiFi.SSID(i).c_str(), wifiSsid_) != 0) continue;
+    if (sighting.found && WiFi.RSSI(i) <= sighting.rssi) continue;
+    sighting.found = true;
+    sighting.channel = static_cast<uint8_t>(WiFi.channel(i));
+    sighting.rssi = WiFi.RSSI(i);
+    sighting.encryption = WiFi.encryptionType(i);
+  }
+  WiFi.scanDelete();
+  return sighting;
 }
 
 void Link::reconfigure(const MqttSettings& settings) {

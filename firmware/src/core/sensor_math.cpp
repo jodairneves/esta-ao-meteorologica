@@ -25,9 +25,9 @@ uint16_t median5(const uint16_t samples[5]) {
 }
 
 uint16_t batteryMillivolts(uint16_t adc, uint16_t fullScaleMv) {
-  // An open A0 floats near zero: no divisor, so "auto" power profiles cannot be used.
-  if (adc < 50) return 0;
-  return static_cast<uint16_t>((static_cast<uint32_t>(adc) * fullScaleMv + 511) / 1023);
+  const uint32_t millivolts = (static_cast<uint32_t>(adc) * fullScaleMv + 511) / 1023;
+  // Without the divisor A0 picks up noise, sometimes a few hundred millivolts.
+  return millivolts < kMinBatteryMv ? 0 : static_cast<uint16_t>(millivolts);
 }
 
 uint8_t liIonPercent(uint16_t millivolts) {

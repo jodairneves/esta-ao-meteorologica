@@ -35,6 +35,21 @@ class Link {
 
   /** Connects to the saved access point; uses the channel/BSSID in RTC memory to be quick. */
   bool wifiUp(RtcState& rtc, uint32_t timeoutMs);
+  /** Why the last wifiUp() gave up: WiFi.status() (WL_WRONG_PASSWORD, WL_NO_SSID_AVAIL…). */
+  int wifiFailure() const { return wifiFailure_; }
+  /** wifiFailure() when the portal never saved a network. */
+  static constexpr int kNoSavedNetwork = -1;
+  /** Name of the network the last wifiUp() tried. */
+  const char* wifiSsid() const { return wifiSsid_; }
+
+  /** The network of wifiSsid() as a scan sees it (the strongest access point with that name). */
+  struct WifiSighting {
+    bool found = false;
+    uint8_t channel = 0;
+    int32_t rssi = 0;
+    uint8_t encryption = 0;  // wl_enc_type
+  };
+  WifiSighting findNetwork();
   /** Radio off (Economy, before deep sleep). */
   void wifiOff();
   bool wifiConnected() const { return WiFi.status() == WL_CONNECTED; }
@@ -80,6 +95,8 @@ class Link {
   std::unique_ptr<MQTTClient> mqtt_;
   bool hadWifi_ = false;
   bool hadMqtt_ = false;
+  int wifiFailure_ = WL_IDLE_STATUS;
+  char wifiSsid_[33] = {0};
   uint16_t wifiReconnects_ = 0;
   uint16_t mqttReconnects_ = 0;
 

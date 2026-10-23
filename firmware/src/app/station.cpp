@@ -121,6 +121,7 @@ class StationApp {
 
   // Network.
   bool openSession();
+  void logWifiFailure();
   void listen(uint32_t durationMs);
   void serviceNormalLink();
   void serviceEconomy();
@@ -183,6 +184,7 @@ class StationApp {
   StatusLed led_;
   bool announcedOnline_ = false;
   bool ntpFailureReported_ = false;
+  bool wifiScanLogged_ = false;
   uint32_t nextConnectAttemptMs_ = 0;
   uint32_t backoffMs_ = kBackoffMinMs;
   uint32_t lastHealthMs_ = 0;
@@ -545,9 +547,52 @@ void StationApp::sleepFor(uint32_t seconds) {
 
 // ---- network -------------------------------------------------------------------------------
 
+const char* encryptionName(uint8_t type) {
+  switch (type) {
+    case ENC_TYPE_NONE: return "aberta";
+    case ENC_TYPE_WEP: return "WEP";
+    case ENC_TYPE_TKIP: return "WPA";
+    case ENC_TYPE_CCMP: return "WPA2";
+    case ENC_TYPE_AUTO: return "WPA/WPA2";
+    default: return "desconhecida";
+  }
+}
+
+void StationApp::logWifiFailure() {
+  const char* ssid = link_.wifiSsid();
+  switch (link_.wifiFailure()) {
+    case Link::kNoSavedNetwork:
+      LOG("Wi-Fi indisponível: nenhuma rede salva (abra o portal)");
+      return;
+    case WL_WRONG_PASSWORD:
+      LOG("Wi-Fi indisponível: a rede \"%s\" recusou a senha", ssid);
+      break;
+    case WL_NO_SSID_AVAIL:
+      LOG("Wi-Fi indisponível: a rede \"%s\" não foi encontrada", ssid);
+      break;
+    case WL_CONNECT_FAILED:
+      LOG("Wi-Fi indisponível: a rede \"%s\" recusou a conexão", ssid);
+      break;
+    default:
+      LOG("Wi-Fi indisponível: a rede \"%s\" não respondeu (status %d)", ssid, link_.wifiFailure());
+      break;
+  }
+  // Once per boot, what the radio sees of the network: it tells a wrong password apart from a
+  // network the ESP8266 cannot join (5 GHz only, WPA3 only).
+  if (wifiScanLogged_) return;
+  wifiScanLogged_ = true;
+  const Link::WifiSighting seen = link_.findNetwork();
+  if (seen.found) {
+    LOG("Wi-Fi: \"%s\" visível no canal %u, sinal %d dBm, segurança %s", ssid,
+        static_cast<unsigned>(seen.channel), static_cast<int>(seen.rssi), encryptionName(seen.encryption));
+  } else {
+    LOG("Wi-Fi: \"%s\" não aparece na busca (o ESP8266 só enxerga redes de 2,4 GHz)", ssid);
+  }
+}
+
 bool StationApp::openSession() {
   if (!link_.wifiUp(rtc_, kWifiTimeoutMs)) {
-    LOG("Wi-Fi indisponível");
+    logWifiFailure();
     return false;
   }
   const bool hadClock = clockIsSet(epochNow());

@@ -31,6 +31,10 @@ void test_battery_millivolts_from_the_adc() {
   TEST_ASSERT_EQUAL_UINT16(4200, wx::batteryMillivolts(1023, 4200));
   TEST_ASSERT_EQUAL_UINT16(3699, wx::batteryMillivolts(901, 4200));  // 3699.1 rounded
   TEST_ASSERT_EQUAL_UINT16(0, wx::batteryMillivolts(3, 4200));  // no divisor on A0
+  // Noise on an A0 without the divisor (seen on the bench) is not a nearly empty battery.
+  TEST_ASSERT_EQUAL_UINT16(0, wx::batteryMillivolts(60, 4200));
+  TEST_ASSERT_EQUAL_UINT16(0, wx::batteryMillivolts(608, 4200));     // 2496 mV
+  TEST_ASSERT_EQUAL_UINT16(2500, wx::batteryMillivolts(609, 4200));  // 2500.8 mV
 }
 
 void test_li_ion_percent_follows_the_server_curve() {

@@ -19,10 +19,14 @@ float htu21dHumidity(uint16_t raw, float temperatureC);
 /** Median of five samples (sorts a copy). */
 uint16_t median5(const uint16_t samples[5]);
 
+/** Below this the board could not be running on the battery it measures. */
+constexpr uint16_t kMinBatteryMv = 2500;
+
 /**
  * Battery millivolts from the 10-bit A0 reading. `fullScaleMv` is the voltage that reads as
- * 1023 (100 kOhm in series with the D1 mini divider gives about 4200 mV). Returns 0 (no battery
- * divisor) when the pin reads near zero.
+ * 1023 (100 kOhm in series with the D1 mini divider gives about 4200 mV). Returns 0 (no battery)
+ * below kMinBatteryMv: such a reading is noise on an A0 without the divisor, or a disconnected
+ * battery, and must not push the automatic profile into Survival.
  */
 uint16_t batteryMillivolts(uint16_t adc, uint16_t fullScaleMv);
 
