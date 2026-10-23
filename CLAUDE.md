@@ -6,7 +6,8 @@ Sistema de monitoramento de estações meteorológicas DIY (Wemos D1 mini/ESP826
 
 - **Design (fonte da verdade):** `docs/superpowers/specs/2026-10-22-estacao-meteorologica-design.md`
 - **Plano por fases:** `docs/superpowers/plans/2026-10-22-plano-de-implementacao.md`
-- **Referências de hardware:** os PDFs na raiz do projeto (fora do git). O resumo do que foi aproveitado está na §1.4 do design.
+- **Referências de hardware:** o que foi aproveitado dos PDFs de terceiros está resumido na §1.4 do design. Os PDFs nunca foram versionados e o usuário os removeu do projeto em 2026-10-23.
+- **Manual de ligação dos sensores:** `docs/manual-de-ligacao.pdf` (gerado por `pnpm docs:manual`).
 
 ## Visão geral
 

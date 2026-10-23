@@ -40,7 +40,7 @@ Sistema para acompanhar estações meteorológicas DIY:
 
 ### 1.4 Referências
 
-PDFs na raiz do projeto (fora do git):
+PDFs de terceiros consultados no design (nunca versionados; removidos do projeto em 2026-10-23):
 
 | Documento | O que aproveitamos |
 |---|---|
