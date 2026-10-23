@@ -5,6 +5,8 @@
 #include <MQTT.h>
 #include <WiFiClientSecureBearSSL.h>
 
+#include <memory>
+
 #include "core/rtc_state.h"
 #include "settings_store.h"
 
@@ -41,6 +43,10 @@ class Link {
   bool mqttConnected();
   /** Graceful disconnect: the broker does not publish the LWT. */
   void mqttDisconnect();
+  /** Why the last connection failed: lwmqtt error (-3 = no TCP connection) and CONNACK code
+   *  (4 = bad username or password, 5 = not authorized). */
+  int mqttError();
+  int mqttReturnCode();
 
   /** QoS 1 publication; returns only after the PUBACK (or false on failure). */
   bool publish(const char* kind, const char* payload, size_t length, bool retained);
@@ -64,7 +70,9 @@ class Link {
   BearSSL::WiFiClientSecure secure_;
   BearSSL::X509List anchors_;
   bool mflnChecked_ = false;
-  MQTTClient mqtt_{512, 2560};
+  // Created in begin(): until then its 3 KB of buffers stay with the configuration portal,
+  // which builds each page in RAM.
+  std::unique_ptr<MQTTClient> mqtt_;
   bool hadWifi_ = false;
   bool hadMqtt_ = false;
   uint16_t wifiReconnects_ = 0;

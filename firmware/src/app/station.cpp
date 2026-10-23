@@ -203,7 +203,8 @@ void StationApp::setup() {
   loadDeviceConfig(config_, configRev_);
   const bool configured = loadMqttSettings(settings_);
   if (portalRequested || !configured) {
-    LOG("portal de configuração aberto: %s", portalName().c_str());
+    LOG("portal de configuração aberto: %s (heap livre %u, maior bloco %u)", portalName().c_str(),
+        static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMaxFreeBlockSize()));
     const MqttSettings before = settings_;
     if (!runConfigPortal(settings_) && !settings_.complete()) sleepFor(kPortalRetrySleepS);
     if (strcmp(before.host, settings_.host) != 0 || strcmp(before.code, settings_.code) != 0 ||
@@ -216,6 +217,8 @@ void StationApp::setup() {
     }
   }
   link_.begin(settings_);
+  LOG("servidor MQTT %s:%u %s, estação %s", settings_.host, settings_.port,
+      settings_.tls ? "com TLS" : "sem TLS", settings_.code);
 
   batteryMv_ = readBatteryMillivolts(config_.batFullScaleMv);
   const bool wokeFromSleep = resetReason_ == REASON_DEEP_SLEEP_AWAKE && rtcValid;
@@ -507,18 +510,24 @@ bool StationApp::openSession() {
   const bool hadClock = clockIsSet(epochNow());
   if (!link_.syncClock(kNtpTimeoutMs)) {
     if (!ntpFailureReported_) {
+      LOG("NTP sem resposta: relógio não sincronizado");
       queueEvent(EventLevel::Warn, "NTP_FAILED", "Relógio não sincronizado (NTP sem resposta)");
       ntpFailureReported_ = true;
     }
   } else if (!hadClock) {
+    LOG("relógio sincronizado pelo NTP");
     // Readings taken before the clock was set get their time now; intervals align to it.
     buffer.fixTimestamps(epochNow(), millis());
     scheduleIntervalEnd();
   }
   if (!link_.mqttConnect()) {
-    LOG("MQTT recusou a conexão");
+    // Where it tried to go and from where: enough to tell the network from the credentials.
+    LOG("MQTT falhou com %s:%u (erro %d, código %d); IP %s, gateway %s, sinal %d dBm", settings_.host,
+        settings_.port, link_.mqttError(), link_.mqttReturnCode(), WiFi.localIP().toString().c_str(),
+        WiFi.gatewayIP().toString().c_str(), static_cast<int>(WiFi.RSSI()));
     return false;
   }
+  LOG("MQTT conectado a %s:%u", settings_.host, settings_.port);
   announcedOnline_ = false;
   return true;
 }

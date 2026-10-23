@@ -26,21 +26,22 @@ void Link::begin(const MqttSettings& settings) {
   anchors_.append(kIsrgRootX2);
   secure_.setTrustAnchors(&anchors_);
 
-  mqtt_.setKeepAlive(kKeepAliveS);
-  mqtt_.setCleanSession(false);
-  mqtt_.setTimeout(kAckTimeoutMs);
+  mqtt_ = std::make_unique<MQTTClient>(512, 2560);
+  mqtt_->setKeepAlive(kKeepAliveS);
+  mqtt_->setCleanSession(false);
+  mqtt_->setTimeout(kAckTimeoutMs);
   if (settings_.tls) {
-    mqtt_.begin(settings_.host, settings_.port, secure_);
+    mqtt_->begin(settings_.host, settings_.port, secure_);
   } else {
-    mqtt_.begin(settings_.host, settings_.port, plain_);
+    mqtt_->begin(settings_.host, settings_.port, plain_);
   }
-  mqtt_.onMessageAdvanced([this](MQTTClient*, char topic[], char bytes[], int length) {
+  mqtt_->onMessageAdvanced([this](MQTTClient*, char topic[], char bytes[], int length) {
     onMessage(topic, bytes, length);
   });
 
   char will[96];
   topic(will, sizeof(will), "status");
-  mqtt_.setWill(will, kOfflineStatus, true, 1);
+  mqtt_->setWill(will, kOfflineStatus, true, 1);
 }
 
 bool Link::wifiUp(RtcState& rtc, uint32_t timeoutMs) {
@@ -80,7 +81,7 @@ bool Link::wifiUp(RtcState& rtc, uint32_t timeoutMs) {
 }
 
 void Link::wifiOff() {
-  if (mqtt_.connected()) mqtt_.disconnect();
+  mqttDisconnect();
   WiFi.disconnect(true);
   WiFi.mode(WIFI_OFF);
   WiFi.forceSleepBegin();
@@ -99,7 +100,8 @@ bool Link::syncClock(uint32_t timeoutMs) {
 }
 
 bool Link::mqttConnect() {
-  if (mqtt_.connected()) return true;
+  if (!mqtt_) return false;
+  if (mqtt_->connected()) return true;
   if (!wifiConnected()) return false;
 
   if (settings_.tls) {
@@ -116,15 +118,15 @@ bool Link::mqttConnect() {
 
   char clientId[40];
   snprintf(clientId, sizeof(clientId), "st-%s", settings_.code);
-  if (!mqtt_.connect(clientId, settings_.code, settings_.password)) return false;
+  if (!mqtt_->connect(clientId, settings_.code, settings_.password)) return false;
 
   char config[96];
   char command[96];
   topic(config, sizeof(config), "config");
   topic(command, sizeof(command), "cmd");
   // Subscribing on every connection redelivers the retained configuration.
-  if (!mqtt_.subscribe(config, 1) || !mqtt_.subscribe(command, 1)) {
-    mqtt_.disconnect();
+  if (!mqtt_->subscribe(config, 1) || !mqtt_->subscribe(command, 1)) {
+    mqtt_->disconnect();
     return false;
   }
   if (hadMqtt_) mqttReconnects_++;
@@ -132,19 +134,25 @@ bool Link::mqttConnect() {
   return true;
 }
 
-bool Link::mqttConnected() { return mqtt_.connected(); }
+bool Link::mqttConnected() { return mqtt_ && mqtt_->connected(); }
 
 void Link::mqttDisconnect() {
-  if (mqtt_.connected()) mqtt_.disconnect();
+  if (mqttConnected()) mqtt_->disconnect();
 }
+
+int Link::mqttError() { return mqtt_ ? static_cast<int>(mqtt_->lastError()) : 0; }
+
+int Link::mqttReturnCode() { return mqtt_ ? static_cast<int>(mqtt_->returnCode()) : 0; }
 
 bool Link::publish(const char* kind, const char* payload, size_t length, bool retained) {
   char name[96];
   topic(name, sizeof(name), kind);
-  return mqtt_.publish(name, payload, static_cast<int>(length), retained, 1);
+  return mqtt_ && mqtt_->publish(name, payload, static_cast<int>(length), retained, 1);
 }
 
-void Link::loop() { mqtt_.loop(); }
+void Link::loop() {
+  if (mqtt_) mqtt_->loop();
+}
 
 bool Link::takeMessage(InboxMessage& out) {
   if (inboxCount_ == 0) return false;
