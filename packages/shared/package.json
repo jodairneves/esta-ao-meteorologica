@@ -1,0 +1,16 @@
+{
+  "name": "@wx/shared",
+  "version": "0.1.0",
+  "private": true,
+  "description": "MQTT contract, domain types and meteorological formulas (runs in Node and in the browser).",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "zod": "^4.6.7"
+  }
+}

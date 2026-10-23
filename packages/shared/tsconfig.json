@@ -1,0 +1,10 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // Runs in Node and in the browser: no Node globals and no DOM. The webworker lib declares
+    // the web APIs both runtimes share (TextEncoder/TextDecoder, URL, crypto…).
+    "lib": ["es2024", "webworker"],
+    "types": []
+  },
+  "include": ["src"]
+}
