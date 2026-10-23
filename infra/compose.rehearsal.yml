@@ -1,0 +1,9 @@
+# Rehearsal of the production stack on a development machine (docs/deploy.md, "Ensaio local"):
+# the dashboard on http://localhost:3400 instead of behind Coolify's proxy. Variables in
+# .env.rehearsal (git-ignored), with MQTT_HOST_PORT=127.0.0.1:1884 to keep the broker local.
+#   docker compose -p wx-rehearsal --env-file .env.rehearsal -f docker-compose.yaml \
+#     -f infra/compose.rehearsal.yml up -d --build --wait
+services:
+  dashboard:
+    ports:
+      - "127.0.0.1:3400:3000"

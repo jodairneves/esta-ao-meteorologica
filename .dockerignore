@@ -1,0 +1,14 @@
+# Build context of the app images (Dockerfile): sources and manifests, no secrets.
+**/node_modules
+**/dist
+.git
+.env
+.env.*
+docs
+firmware
+infra
+*.pdf
+tools/simulator/.stations.json
+**/playwright-report
+**/test-results
+apps/dashboard/e2e/.auth
