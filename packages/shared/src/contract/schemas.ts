@@ -74,6 +74,8 @@ export const healthMessageSchema = z.object({
     .object({ bme280: sensorHealth, htu21d: sensorHealth, wind: sensorHealth, rain: sensorHealth })
     .default({}),
   cfg_rev: z.int().min(0).nullable().default(null),
+  /** Address on the local network, where the station serves its configuration page. */
+  ip: z.ipv4().nullable().default(null),
 });
 export type HealthMessage = z.infer<typeof healthMessageSchema>;
 
@@ -133,8 +135,17 @@ function checkBatchInterval(
 export const deviceConfigSchema = z.object(deviceConfigShape).superRefine(checkBatchInterval);
 export type DeviceConfig = z.infer<typeof deviceConfigSchema>;
 
+/** Password of the configuration page served on the local network: printable ASCII, no spaces. */
+export const LOCAL_PASSWORD_PATTERN = /^[\x21-\x7e]{8,64}$/;
+
 export const configMessageSchema = z
-  .object({ v: version, rev: z.int().min(1), ...deviceConfigShape })
+  .object({
+    v: version,
+    rev: z.int().min(1),
+    ...deviceConfigShape,
+    // Kept apart from `stations.device_config`: only admins may read it back.
+    local_password: z.string().regex(LOCAL_PASSWORD_PATTERN).optional(),
+  })
   .superRefine(checkBatchInterval);
 export type ConfigMessage = z.infer<typeof configMessageSchema>;
 

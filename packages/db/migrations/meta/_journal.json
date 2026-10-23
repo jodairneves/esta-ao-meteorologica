@@ -29,6 +29,13 @@
       "when": 1792758165044,
       "tag": "0003_climate_sensor",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1792768086265,
+      "tag": "0004_local_access",
+      "breakpoints": true
     }
   ]
 }

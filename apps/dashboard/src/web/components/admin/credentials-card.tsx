@@ -45,7 +45,7 @@ export function CredentialsCard({ credentials }: { credentials: StationCredentia
             Escolha o Wi-Fi do local e preencha servidor, porta, TLS, o código da estação (
             {credentials.username}) e a senha acima.
           </li>
-          <li>Salve. A estação reinicia e aparece como online no painel em alguns segundos.</li>
+          <li>Salve. A estação se conecta e aparece como online no painel em alguns segundos.</li>
         </ol>
       </div>
     </div>

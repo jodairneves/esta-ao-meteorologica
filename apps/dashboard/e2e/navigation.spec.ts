@@ -43,3 +43,24 @@ test('the sidebar reaches every monitoring screen', async ({ page }) => {
     await expect(page.getByRole('heading', { level: 1, name: heading })).toBeVisible();
   }
 });
+
+test('a station page shows its local address and, to admins, the local page login', async ({
+  page,
+}) => {
+  // Demo stations report fictitious addresses from the documentation range (192.0.2.x).
+  await page.goto('/estacoes/sede');
+  const live = page.getByRole('region', { name: 'Valores ao vivo' });
+  await expect(live).toContainText(/IP na rede\s*192\.0\.2\.\d+/);
+  await expect(live.getByRole('link', { name: 'Abrir a página da estação' })).toHaveAttribute(
+    'href',
+    /^http:\/\/192\.0\.2\.\d+$/,
+  );
+
+  await live.getByRole('button', { name: 'Ver' }).click();
+  // Either the password, or the button to create one for a station registered before it existed.
+  await expect(
+    live
+      .getByRole('button', { name: 'Gerar senha' })
+      .or(live.getByText(/^[a-hjkmnp-z2-9]{4}-[a-hjkmnp-z2-9]{4}-[a-hjkmnp-z2-9]{4}$/)),
+  ).toBeVisible();
+});

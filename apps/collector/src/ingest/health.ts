@@ -70,6 +70,8 @@ export async function handleHealth(
       rssi: message.rssi,
       firmwareVersion: message.fw,
       ...(message.cfg_rev !== null ? { configAppliedRev: message.cfg_rev } : {}),
+      // Older firmware does not report it: the last known address stays.
+      ...(message.ip !== null ? { ipAddress: message.ip } : {}),
     });
 
     // A redelivered message refreshes the state but must not repeat the side effects.

@@ -98,8 +98,18 @@ export class BrokerAdmin {
     await removeStation(this.requireDynsec(), this.requireClient(), code);
   }
 
-  async publishConfig(code: string, rev: number, config: DeviceConfig): Promise<void> {
-    const message: ConfigMessage = { v: PROTOCOL_VERSION, rev, ...config };
+  async publishConfig(
+    code: string,
+    rev: number,
+    config: DeviceConfig,
+    localPassword: string | null,
+  ): Promise<void> {
+    const message: ConfigMessage = {
+      v: PROTOCOL_VERSION,
+      rev,
+      ...config,
+      ...(localPassword ? { local_password: localPassword } : {}),
+    };
     await this.requireClient().publishAsync(stationTopic(code, 'config'), JSON.stringify(message), {
       qos: 1,
       retain: true,

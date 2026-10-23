@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { randomInt, randomUUID } from 'node:crypto';
 import {
   and,
   CHANNELS,
@@ -31,6 +31,7 @@ import type {
   CommandDto,
   CreateStationResponse,
   createStationBodySchema,
+  LocalPageAccess,
   SessionUser,
   StationCredentials,
   StationDetail,
@@ -66,6 +67,23 @@ function credentialsFor(
   };
 }
 
+/** Username of the configuration page the station serves on its local network. */
+export const LOCAL_PAGE_USERNAME = 'admin';
+
+// No look-alike characters (0/o, 1/l/i): it is read on the station page and typed on a phone.
+const LOCAL_PASSWORD_ALPHABET = 'abcdefghjkmnpqrstuvwxyz23456789';
+
+/** Password of the local configuration page, like "k7mp-9xq2-rt4w" (about 70 bits). */
+export function generateLocalPassword(): string {
+  const groups = Array.from({ length: 3 }, () =>
+    Array.from(
+      { length: 4 },
+      () => LOCAL_PASSWORD_ALPHABET[randomInt(LOCAL_PASSWORD_ALPHABET.length)],
+    ).join(''),
+  );
+  return groups.join('-');
+}
+
 const notifyChanged = (db: Executor, stationId: string) =>
   db.execute(notifyStatement(CHANNELS.stationChanged, { stationId }));
 
@@ -95,6 +113,7 @@ export async function createStation(
   const { db, broker } = deps;
   const code = input.code ?? (await freeCode(db, suggestStationCode(input.name)));
   const password = generatePassword();
+  const localPassword = generateLocalPassword();
 
   const created = await db.transaction(async (tx) => {
     const [row] = await tx
@@ -115,6 +134,7 @@ export async function createStation(
         presOffsetHpa: input.presOffsetHpa ?? 0,
         deviceConfig: DEFAULT_DEVICE_CONFIG,
         mqttCredentialsSetAt: new Date(),
+        localPassword,
         createdBy: actor.id,
       })
       .onConflictDoNothing({ target: stations.code })
@@ -123,7 +143,7 @@ export async function createStation(
 
     await tx.insert(stationState).values({ stationId: row.id });
     await broker.provision(code, password);
-    await broker.publishConfig(code, row.deviceConfigRev, row.deviceConfig);
+    await broker.publishConfig(code, row.deviceConfigRev, row.deviceConfig, localPassword);
     await notifyChanged(tx, row.id);
     await audit(tx, {
       userId: actor.id,
@@ -265,7 +285,7 @@ export async function updateDeviceConfig(
       .update(stations)
       .set({ deviceConfig: config, deviceConfigRev: rev, updatedAt: new Date() })
       .where(eq(stations.id, station.id));
-    await broker.publishConfig(station.code, rev, config);
+    await broker.publishConfig(station.code, rev, config, station.localPassword);
     await notifyChanged(tx, station.id);
     await audit(tx, {
       userId: actor.id,
@@ -278,6 +298,60 @@ export async function updateDeviceConfig(
   });
 
   return getStationDetail(db, station.id);
+}
+
+/** Login of the station's local configuration page; looking it up is audited. */
+export async function getLocalPageAccess(
+  deps: StationServiceDeps,
+  idOrCode: string,
+  actor: SessionUser,
+): Promise<LocalPageAccess> {
+  const { db } = deps;
+  const station = await findStation(db, idOrCode);
+  if (station.localPassword) {
+    await audit(db, {
+      userId: actor.id,
+      code: 'LOCAL_PASSWORD_VIEWED',
+      category: 'audit',
+      message: `Senha da página local da ${stationLabel(station.name)} exibida`,
+      stationId: station.id,
+    });
+  }
+  return { username: LOCAL_PAGE_USERNAME, password: station.localPassword };
+}
+
+/**
+ * New password for the local configuration page. It reaches the station inside the retained
+ * configuration (new revision); until then the station keeps accepting the previous one.
+ */
+export async function rotateLocalPassword(
+  deps: StationServiceDeps,
+  idOrCode: string,
+  actor: SessionUser,
+): Promise<LocalPageAccess> {
+  const { db, broker } = deps;
+  const station = await findStation(db, idOrCode);
+  const localPassword = generateLocalPassword();
+  const rev = station.deviceConfigRev + 1;
+
+  await db.transaction(async (tx) => {
+    await tx
+      .update(stations)
+      .set({ localPassword, deviceConfigRev: rev, updatedAt: new Date() })
+      .where(eq(stations.id, station.id));
+    await broker.publishConfig(station.code, rev, station.deviceConfig, localPassword);
+    await notifyChanged(tx, station.id);
+    await audit(tx, {
+      userId: actor.id,
+      code: 'LOCAL_PASSWORD_ROTATED',
+      category: 'audit',
+      message: `Nova senha da página local gerada para a ${stationLabel(station.name)} (configuração rev ${rev})`,
+      stationId: station.id,
+      details: { rev },
+    });
+  });
+
+  return { username: LOCAL_PAGE_USERNAME, password: localPassword };
 }
 
 const COMMAND_LABELS: Record<Command, string> = {

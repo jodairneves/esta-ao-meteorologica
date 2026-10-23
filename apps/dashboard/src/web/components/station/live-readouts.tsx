@@ -7,6 +7,7 @@ import { cn } from '../../lib/css';
 import { formatNumber, formatTime, MISSING, msToKmh, withUnit } from '../../lib/format';
 import { POWER_MODE_LOOK, signalQuality } from '../../lib/status';
 import { BatteryMeter, StatusPill } from '../ui/status';
+import { LocalPageAccess } from './local-page-access';
 
 const TREND: Record<PressureTrend, { label: string; icon: LucideIcon }> = {
   steady: { label: 'Estável', icon: MoveRight },
@@ -198,12 +199,14 @@ export function LiveReadouts({
             {rssi === null ? MISSING : `${rssi} dBm, ${signalQuality(rssi).toLowerCase()}`}
           </Detail>
           <Detail term="Firmware">{station.state.firmwareVersion ?? MISSING}</Detail>
+          <Detail term="IP na rede">{station.state.ipAddress ?? MISSING}</Detail>
         </dl>
         {batteryMv !== null && liIonPercent(batteryMv) < 15 && (
           <p className="mt-2 text-[13px] text-critical">
             Bateria quase no fim: confira o painel solar e as ligações.
           </p>
         )}
+        <LocalPageAccess station={station} />
       </section>
     </div>
   );

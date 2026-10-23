@@ -61,6 +61,7 @@ export function toSnapshot(row: StationStateRow): StationStateSnapshot {
     batteryMv: row.batteryMv,
     rssi: row.rssi,
     firmwareVersion: row.firmwareVersion,
+    ipAddress: row.ipAddress,
   };
 }
 

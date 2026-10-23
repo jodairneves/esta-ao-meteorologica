@@ -51,6 +51,7 @@ interface SummaryRow extends Record<string, unknown> {
   battery_mv: number | null;
   rssi: number | null;
   firmware_version: string | null;
+  ip_address: string | null;
   r_ts: unknown;
   temperature_c: number | null;
   humidity_pct: number | null;
@@ -85,7 +86,7 @@ export async function listStationSummaries(
            s.timezone, s.climate_sensor, s.is_active,
            st.connection, st.connection_changed_at, st.next_contact_at, st.last_seen_at,
            st.last_reading_at, st.power_mode, st.battery_mv, st.rssi, st.firmware_version,
-           r.ts as r_ts, r.temperature_c, r.humidity_pct, r.pressure_hpa, r.pressure_msl_hpa,
+           st.ip_address, r.ts as r_ts, r.temperature_c, r.humidity_pct, r.pressure_hpa, r.pressure_msl_hpa,
            r.dew_point_c, r.wind_speed_ms, r.wind_gust_ms,
            (select sum(rr.rain_mm) from readings rr
              where rr.station_id = s.id
@@ -159,6 +160,7 @@ export async function listStationSummaries(
         batteryPct: row.battery_mv === null ? null : liIonPercent(row.battery_mv),
         rssi: row.rssi,
         firmwareVersion: row.firmware_version,
+        ipAddress: row.ip_address,
       },
       latest: readingTs
         ? {

@@ -56,6 +56,11 @@ export const stations = pgTable(
     deviceConfig: jsonb('device_config').$type<DeviceConfig>().notNull(),
     deviceConfigRev: integer('device_config_rev').notNull().default(1),
     mqttCredentialsSetAt: timestamptz('mqtt_credentials_set_at'),
+    /**
+     * Password of the configuration page the station serves on its local network. Unlike the
+     * MQTT password it stays readable: admins look it up on the station page.
+     */
+    localPassword: text('local_password'),
     createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
@@ -88,6 +93,8 @@ export const stationState = pgTable(
     batteryMv: integer('battery_mv'),
     rssi: integer('rssi'),
     firmwareVersion: text('firmware_version'),
+    /** Last address the station reported on its local network. */
+    ipAddress: text('ip_address'),
     configAppliedRev: integer('config_applied_rev'),
     /** Rain counter baseline (design §6.1). */
     rainRun: bigint('rain_run', { mode: 'number' }),

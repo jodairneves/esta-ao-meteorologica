@@ -10,6 +10,7 @@ import { CalibrationForm } from '../../components/admin/calibration-form';
 import { CommandsPanel } from '../../components/admin/commands-panel';
 import { CredentialsCard } from '../../components/admin/credentials-card';
 import { DeviceConfigForm } from '../../components/admin/device-config-form';
+import { LocalPasswordPanel } from '../../components/admin/local-password-panel';
 import { initialStationValues, StationForm } from '../../components/admin/station-form';
 import { Button } from '../../components/ui/button';
 import { ConfirmDialog } from '../../components/ui/confirm-dialog';
@@ -322,12 +323,18 @@ export default function EditStationPage() {
             },
             {
               value: 'credenciais',
-              label: 'Credenciais MQTT',
+              label: 'Credenciais',
               content: (
-                <CredentialsTab
-                  station={data}
-                  onRotated={() => client.invalidateQueries({ queryKey: ['station'] })}
-                />
+                <>
+                  <CredentialsTab
+                    station={data}
+                    onRotated={() => client.invalidateQueries({ queryKey: ['station'] })}
+                  />
+                  <LocalPasswordPanel
+                    station={data}
+                    onRotated={() => client.invalidateQueries({ queryKey: ['station'] })}
+                  />
+                </>
               ),
             },
             { value: 'comandos', label: 'Comandos', content: <CommandsPanel station={data} /> },

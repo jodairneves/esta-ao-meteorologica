@@ -51,6 +51,7 @@ export interface StationStateSnapshot {
   batteryMv: number | null;
   rssi: number | null;
   firmwareVersion: string | null;
+  ipAddress: string | null;
 }
 
 export interface StationNotification {

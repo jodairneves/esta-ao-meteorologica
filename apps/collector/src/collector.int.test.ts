@@ -383,13 +383,19 @@ describe('collector (App 1)', () => {
         mode: 'economy',
         bat_mv: 3600,
         sensors: { bme280: 'error', wind: 'ok', rain: 'ok' },
+        ip: '10.25.50.111',
       }),
     );
     await waitUntil(async () => {
       expect(await activeAlert('battery_low')).toBeDefined();
       expect(await activeAlert('sensor_error', 'bme280')).toBeDefined();
     });
-    expect(await state()).toMatchObject({ batteryMv: 3600, powerMode: 'economy', rssi: -70 });
+    expect(await state()).toMatchObject({
+      batteryMv: 3600,
+      powerMode: 'economy',
+      rssi: -70,
+      ipAddress: '10.25.50.111',
+    });
     expect(
       await db.select().from(deviceHealth).where(eq(deviceHealth.stationId, stationId)),
     ).toHaveLength(1);
@@ -410,6 +416,8 @@ describe('collector (App 1)', () => {
       expect(await activeAlert('battery_low')).toBeUndefined();
       expect(await activeAlert('sensor_error', 'bme280')).toBeUndefined();
     });
+    // A diagnosis without the address (older firmware) keeps the last one known.
+    expect((await state())?.ipAddress).toBe('10.25.50.111');
   });
 
   it('applies command acknowledgements and config confirmations', async () => {

@@ -31,6 +31,8 @@ const CATEGORY_BY_CODE: Readonly<Record<string, LogCategory>> = {
   CONFIG_APPLIED: 'config',
   CONFIG_REJECTED: 'config',
   CMD_ACK: 'command',
+  LOCAL_CONFIG_APPLIED: 'config',
+  LOCAL_CONFIG_REVERTED: 'config',
 };
 
 /** Device events go to event_logs; a few of them also update commands, config or sensors. */

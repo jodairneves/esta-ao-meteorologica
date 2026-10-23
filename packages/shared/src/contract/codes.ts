@@ -9,6 +9,9 @@ export const DEVICE_EVENT_CODES = [
   'CONFIG_APPLIED',
   'CONFIG_REJECTED',
   'CMD_ACK',
+  // Server or Wi-Fi changed on the station's local page: kept, or undone after failing to connect.
+  'LOCAL_CONFIG_APPLIED',
+  'LOCAL_CONFIG_REVERTED',
 ] as const;
 export type DeviceEventCode = (typeof DEVICE_EVENT_CODES)[number];
 

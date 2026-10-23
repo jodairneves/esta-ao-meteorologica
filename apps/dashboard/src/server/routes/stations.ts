@@ -14,8 +14,10 @@ import { findStation, getStationDetail, listStationSummaries } from '../services
 import {
   createStation,
   deleteStation,
+  getLocalPageAccess,
   listCommands,
   rotateCredentials,
+  rotateLocalPassword,
   sendCommand,
   updateDeviceConfig,
   updateStation,
@@ -58,6 +60,17 @@ export async function stationRoutes(app: FastifyInstance, deps: AppDeps): Promis
   app.post('/stations/:id/credentials', admin, async (request) => {
     const { id } = parseInput(stationParams, request.params);
     return rotateCredentials(service, id, currentUser(request));
+  });
+
+  // Login of the configuration page the station serves on its local network.
+  app.get('/stations/:id/local-access', admin, async (request) => {
+    const { id } = parseInput(stationParams, request.params);
+    return getLocalPageAccess(service, id, currentUser(request));
+  });
+
+  app.post('/stations/:id/local-access', admin, async (request) => {
+    const { id } = parseInput(stationParams, request.params);
+    return rotateLocalPassword(service, id, currentUser(request));
   });
 
   app.put('/stations/:id/device-config', admin, async (request) => {

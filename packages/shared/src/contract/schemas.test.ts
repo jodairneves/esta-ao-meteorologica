@@ -97,6 +97,14 @@ describe('status, health and event', () => {
     const parsed = healthMessageSchema.parse({ v: 1, ts: 1761181260, fw: '1.0.0', mode: 'normal' });
     expect(parsed.bat_mv).toBeNull();
     expect(parsed.sensors).toEqual({});
+    expect(parsed.ip).toBeNull();
+  });
+
+  it('accepts the local IPv4 address of the station', () => {
+    const base = { v: 1, ts: 1761181260, fw: '1.0.0', mode: 'normal' };
+    expect(healthMessageSchema.parse({ ...base, ip: '10.25.50.111' }).ip).toBe('10.25.50.111');
+    expect(healthMessageSchema.safeParse({ ...base, ip: '10.25.50.300' }).success).toBe(false);
+    expect(healthMessageSchema.safeParse({ ...base, ip: 'estacao.local' }).success).toBe(false);
   });
 
   it('accepts the HTU21D station version, which reports no barometer', () => {
@@ -138,6 +146,20 @@ describe('config and commands', () => {
   it('accepts the default device config', () => {
     expect(deviceConfigSchema.parse(DEFAULT_DEVICE_CONFIG)).toEqual(DEFAULT_DEVICE_CONFIG);
     expect(configMessageSchema.parse({ v: 1, rev: 3, ...DEFAULT_DEVICE_CONFIG }).rev).toBe(3);
+  });
+
+  it('carries the local page password only in the config message', () => {
+    const message = { v: 1, rev: 3, ...DEFAULT_DEVICE_CONFIG, local_password: 'k7mp-9xq2-rt4w' };
+    expect(configMessageSchema.parse(message).local_password).toBe('k7mp-9xq2-rt4w');
+    expect(configMessageSchema.safeParse({ ...message, local_password: 'curta' }).success).toBe(
+      false,
+    );
+    expect(
+      configMessageSchema.safeParse({ ...message, local_password: 'com espaço' }).success,
+    ).toBe(false);
+    expect(deviceConfigSchema.parse({ ...DEFAULT_DEVICE_CONFIG, local_password: 'x' })).toEqual(
+      DEFAULT_DEVICE_CONFIG,
+    );
   });
 
   it('rejects thresholds out of order', () => {

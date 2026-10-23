@@ -2,11 +2,13 @@ import { randomBytes } from 'node:crypto';
 import type { AddressInfo } from 'node:net';
 import {
   alerts,
+  and,
   createDb,
   createPool,
   type Database,
   type DbPool,
   eq,
+  eventLogs,
   openAlert,
   prepareDatabase,
   readings,
@@ -22,6 +24,7 @@ import type {
   AlertDto,
   CreateStationResponse,
   LatestResponse,
+  LocalPageAccess,
   LogDto,
   Page,
   SeriesResponse,
@@ -81,6 +84,9 @@ async function login(app: App, email: string, password: string) {
   }
   return { client: clientFor(app, cookie.value), cookie };
 }
+
+// Generated local page passwords: three groups of four, no look-alike characters.
+const LOCAL_PASSWORD_FORMAT = /^[a-hjkmnp-z2-9]{4}-[a-hjkmnp-z2-9]{4}-[a-hjkmnp-z2-9]{4}$/;
 
 describe('dashboard API', () => {
   let pool: DbPool;
@@ -293,6 +299,7 @@ describe('dashboard API', () => {
       ).toBe(403);
       expect((await operator.post('/stations', { name: 'Proibida' })).statusCode).toBe(403);
       expect((await operator.put('/settings', {})).statusCode).toBe(403);
+      expect((await operator.get('/stations/qualquer/local-access')).statusCode).toBe(403);
     });
 
     it('never leaves the system without an active administrator', async () => {
@@ -335,7 +342,13 @@ describe('dashboard API', () => {
         }),
       );
       await station.subscribeAsync(stationTopic(created.station.code, 'config'), { qos: 1 });
-      expect(JSON.parse(await config)).toMatchObject({ v: 1, rev: 1, interval_s: 60 });
+      expect(JSON.parse(await config)).toMatchObject({
+        v: 1,
+        rev: 1,
+        interval_s: 60,
+        local_password: expect.stringMatching(LOCAL_PASSWORD_FORMAT),
+      });
+      expect(created.station.state.ipAddress).toBeNull();
     });
 
     it('refuses a duplicate code', async () => {
@@ -397,6 +410,53 @@ describe('dashboard API', () => {
       const reconnected = await connectStation(rotated);
       stationClients.push(reconnected);
       created = { ...created, credentials: rotated };
+    });
+
+    it('shows the local page login to admins and sends a new password in the config', async () => {
+      const code = created.station.code;
+      const shown = (await admin.get(`/stations/${code}/local-access`)).json() as LocalPageAccess;
+      expect(shown).toEqual({
+        username: 'admin',
+        password: expect.stringMatching(LOCAL_PASSWORD_FORMAT),
+      });
+      const [viewed] = await db
+        .select()
+        .from(eventLogs)
+        .where(
+          and(
+            eq(eventLogs.stationId, created.station.id),
+            eq(eventLogs.code, 'LOCAL_PASSWORD_VIEWED'),
+          ),
+        );
+      expect(viewed).toBeDefined();
+
+      const listener = await connectStation(created.credentials);
+      stationClients.push(listener);
+      const configs: Record<string, unknown>[] = [];
+      listener.on('message', (topic, payload) => {
+        if (topic === stationTopic(code, 'config')) configs.push(JSON.parse(payload.toString()));
+      });
+      await listener.subscribeAsync(stationTopic(code, 'config'), { qos: 1 });
+
+      const before = (await admin.get(`/stations/${code}`)).json() as StationDetail;
+      const rotated = (
+        await admin.post(`/stations/${code}/local-access`)
+      ).json() as LocalPageAccess;
+      expect(rotated.password).toMatch(LOCAL_PASSWORD_FORMAT);
+      expect(rotated.password).not.toBe(shown.password);
+      await vi.waitFor(() =>
+        expect(configs).toContainEqual(
+          expect.objectContaining({
+            rev: before.deviceConfigRev + 1,
+            local_password: rotated.password,
+            interval_s: before.deviceConfig.interval_s,
+          }),
+        ),
+      );
+      // The desired configuration seen by every user never carries the password.
+      const after = (await admin.get(`/stations/${code}`)).json() as StationDetail;
+      expect(after.deviceConfigRev).toBe(before.deviceConfigRev + 1);
+      expect(JSON.stringify(after)).not.toContain(rotated.password as string);
     });
 
     it('deletes a station only after the code is typed', async () => {

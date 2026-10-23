@@ -114,6 +114,9 @@ function DeviceTable({
                 <td className="px-4 py-3 whitespace-nowrap text-ink">
                   {station.state.rssi === null ? MISSING : `${station.state.rssi} dBm`}
                   <div className="text-[13px] text-ink-3">{signalQuality(station.state.rssi)}</div>
+                  {station.state.ipAddress && (
+                    <div className="text-[13px] text-ink-3">IP {station.state.ipAddress}</div>
+                  )}
                 </td>
                 <td className="px-4 py-3 whitespace-nowrap text-ink">
                   {station.state.firmwareVersion ?? MISSING}

@@ -73,12 +73,15 @@ export class VirtualStation {
   private readonly weather: WeatherModel;
   private readonly power: PowerModel;
   private readonly rng: Rng;
+  /** Fictitious local address from the documentation range (RFC 5737): it never answers. */
+  private readonly ip: string;
 
   constructor(
     private readonly def: StationCredentials,
     private readonly options: VirtualStationOptions,
   ) {
     const seed = hashString(def.code);
+    this.ip = `192.0.2.${10 + (seed % 200)}`;
     this.rng = createRng(seed ^ 0x9e3779b9);
     this.rssi = -55 - Math.round(this.rng() * 20);
     this.weather = new WeatherModel(def.climate, def, seed);
@@ -465,6 +468,7 @@ export class VirtualStation {
         rain: 'ok',
       },
       cfg_rev: this.appliedRev > 0 ? this.appliedRev : null,
+      ip: this.ip,
     });
   }
 

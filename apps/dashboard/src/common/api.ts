@@ -176,6 +176,8 @@ export interface StationStateDto {
   batteryPct: number | null;
   rssi: number | null;
   firmwareVersion: string | null;
+  /** Address on the station's local network, where it serves its configuration page. */
+  ipAddress: string | null;
 }
 
 export interface LatestValues {
@@ -250,6 +252,13 @@ export interface StationDetail extends StationSummary {
   createdAt: string;
   sensors: SensorDto[];
   alerts: AlertDto[];
+}
+
+/** Login of the configuration page the station serves on its local network (admins only). */
+export interface LocalPageAccess {
+  username: string;
+  /** Null until an admin generates one (stations registered before the local page). */
+  password: string | null;
 }
 
 export interface StationCredentials {
