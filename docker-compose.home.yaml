@@ -35,7 +35,10 @@ services:
       target: collector
     restart: unless-stopped
     environment:
-      DATABASE_URL: postgres://weather:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@wx-postgres:5432/weather
+      # The password goes apart from the URL: inside it, a % sequence or a line break would
+      # silently change it.
+      DATABASE_URL: postgres://weather@wx-postgres:5432/weather
+      PGPASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
       MQTT_URL: ${MQTT_URL:-mqtt://mosquitto:1883}
       MQTT_COLLECTOR_USERNAME: ${MQTT_USERNAME:?set MQTT_USERNAME}
       MQTT_COLLECTOR_PASSWORD: ${MQTT_PASSWORD:?set MQTT_PASSWORD}
@@ -59,7 +62,10 @@ services:
       target: dashboard
     restart: unless-stopped
     environment:
-      DATABASE_URL: postgres://weather:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@wx-postgres:5432/weather
+      # The password goes apart from the URL: inside it, a % sequence or a line break would
+      # silently change it.
+      DATABASE_URL: postgres://weather@wx-postgres:5432/weather
+      PGPASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
       MQTT_URL: ${MQTT_URL:-mqtt://mosquitto:1883}
       MQTT_AUTH_MODE: shared
       MQTT_USERNAME: ${MQTT_USERNAME:?set MQTT_USERNAME}

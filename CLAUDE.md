@@ -150,6 +150,7 @@ Sistema de monitoramento de estações meteorológicas DIY (Wemos D1 mini/ESP826
   - `${VAR:?}` bloqueia o deploy até a variável ser preenchida.
   - `ports:` publica direto no host; só o MQTT usa.
   - As configurações vão dentro das imagens (sem bind mount).
+- **Produção — senha do banco:** os composes passam a senha em `PGPASSWORD` e a URL vai sem ela (o `pg` usa o `PGPASSWORD` quando a URL não traz senha). Dentro da URL, `%41` vira `A` e uma quebra de linha some, sem erro: o banco recusa a senha (`password authentication failed`), e foi o que apareceu no primeiro deploy em casa.
 - **Produção — senhas:** `POSTGRES_PASSWORD` e `MOSQUITTO_DYNSEC_PASSWORD` só valem quando o volume é criado (mudar a variável depois tira o acesso dos apps). A do `collector` o painel reaplica a cada start.
 - **Login compartilhado (`MQTT_AUTH_MODE=shared`):**
   - O `BrokerAdmin` não cria `DynsecClient` nem roda o bootstrap. `provision`, `rotatePassword` e `setEnabled` lançam erro; os serviços checam `broker.login` antes.

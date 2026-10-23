@@ -27,7 +27,7 @@ Os modelos comentados são o [`.env.production.example`](../.env.production.exam
 
 | Variável | VPS | Casa | Para quê |
 |---|---|---|---|
-| `POSTGRES_PASSWORD` | sim | sim | Senha do banco. Use só letras e números, porque ela entra na URL de conexão |
+| `POSTGRES_PASSWORD` | sim | sim | Senha do banco. Os apps a recebem à parte da URL de conexão (`PGPASSWORD`), então qualquer caractere serve |
 | `MOSQUITTO_DYNSEC_PASSWORD` | sim | — | Login `admin` do broker próprio, usado pelo painel (mínimo de 12 caracteres) |
 | `MQTT_COLLECTOR_PASSWORD` | sim | — | Login `collector` do broker próprio, criado pelo painel ao subir |
 | `MQTT_USERNAME`, `MQTT_PASSWORD` | — | sim | Login único do broker de produção (`SERVICE_USER_MOSQUITTO` e `SERVICE_PASSWORD_MOSQUITTO` do serviço dele no Coolify) |
@@ -170,6 +170,7 @@ As estações voltam a conectar com as senhas que já tinham.
 | O login mostra "Requisição recusada por segurança" | A `APP_URL` tem que ser exatamente o endereço aberto no navegador, com `https://` |
 | O painel não atualiza sozinho | O tempo real usa SSE (`/api/v1/stream`), que não pode ficar retido no proxy. Recarregue a página e veja os logs do painel |
 | Coletor não saudável | O heartbeat dele não está chegando ao banco: veja os logs do coletor e do banco |
+| `password authentication failed for user "weather"` no log do banco | O volume do banco foi criado com outra `POSTGRES_PASSWORD`, que só vale na primeira subida. No início do log do banco aparece `Skipping initialization`. Corrija sem apagar nada: no terminal do container do banco, rode `psql -U weather -d weather`, depois `\password weather`, e digite a senha atual da variável. Em seguida, reinicie o recurso |
 | O deploy não começa | Falta alguma variável obrigatória (o Coolify destaca as vazias) |
 
 Para conferir a API: `https://estacao.seudominio.com.br/healthz` responde `{"ok":true,"broker":true}` quando a API, o banco e o broker estão bem.

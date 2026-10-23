@@ -895,7 +895,7 @@ Saíram do escopo, em relação ao design original:
 
 | Variável | Uso |
 |---|---|
-| `POSTGRES_PASSWORD` | Banco (o compose monta a URL de conexão) |
+| `POSTGRES_PASSWORD` | Banco. Os apps a recebem em `PGPASSWORD`, à parte da URL, que mudaria uma senha com `%` ou quebra de linha |
 | `MOSQUITTO_DYNSEC_PASSWORD` | Senha do cliente `admin` do Mosquitto (usada pelo Dashboard); mínimo de 12 caracteres, exigência do Mosquitto 2.1 |
 | `MQTT_COLLECTOR_PASSWORD` | Senha do cliente `collector` |
 | `MQTT_USERNAME`, `MQTT_PASSWORD`, `MQTT_URL` | Só em casa: login único e endereço do broker de produção |
