@@ -1,9 +1,11 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { DEFAULT_DEVICE_CONFIG, DEFAULT_SETTINGS } from '@wx/shared';
 import { eq } from 'drizzle-orm';
 import type pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createDb, createPool, type Database } from './client';
-import { prepareDatabase, runMigrations } from './migrate';
+import { DEFAULT_MIGRATIONS_FOLDER, prepareDatabase, runMigrations } from './migrate';
 import { CHANNELS, type Notification, notifyStatement, startListener } from './notify';
 import { alerts, settings, stations, users } from './schema';
 import { getSettings } from './settings';
@@ -57,7 +59,10 @@ describe('database', () => {
     const { rows } = await pool.query<{ applied: number }>(
       'select count(*)::int as applied from drizzle.__drizzle_migrations',
     );
-    expect(rows[0]?.applied).toBe(1);
+    const journal = JSON.parse(
+      readFileSync(join(DEFAULT_MIGRATIONS_FOLDER, 'meta', '_journal.json'), 'utf8'),
+    ) as { entries: unknown[] };
+    expect(rows[0]?.applied).toBe(journal.entries.length);
   });
 
   it('seeds default settings without overwriting changes', async () => {

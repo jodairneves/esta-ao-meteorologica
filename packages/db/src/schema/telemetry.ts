@@ -73,5 +73,6 @@ export const deviceHealth = pgTable(
     uptimeS: bigint('uptime_s', { mode: 'number' }),
     sensors: jsonb('sensors').$type<Partial<Record<string, DeviceSensorHealth>>>(),
   },
-  (t) => [index('device_health_station_ts_idx').on(t.stationId, t.ts)],
+  // Unique: a QoS 1 redelivery of the same health message must not create a second point.
+  (t) => [uniqueIndex('device_health_station_ts_uq').on(t.stationId, t.ts)],
 );

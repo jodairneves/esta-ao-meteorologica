@@ -8,6 +8,13 @@
       "when": 1792722046956,
       "tag": "0000_initial_schema",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1792722905626,
+      "tag": "0001_device_health_dedupe",
+      "breakpoints": true
     }
   ]
 }
