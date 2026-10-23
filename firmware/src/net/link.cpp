@@ -21,10 +21,26 @@ uint32_t epochNow() { return static_cast<uint32_t>(time(nullptr)); }
 }  // namespace
 
 void Link::begin(const MqttSettings& settings) {
+  // WiFi.disconnect() erases the station's Wi-Fi settings, in flash when persistent (the core's
+  // default). The portal has already saved them; from here on they change only through saveWifi().
+  WiFi.persistent(false);
+  if (!anchorsReady_) {
+    anchors_.append(kIsrgRootX1);
+    anchors_.append(kIsrgRootX2);
+    secure_.setTrustAnchors(&anchors_);
+    anchorsReady_ = true;
+  }
+  if (strcmp(settings_.host, settings.host) != 0 || settings_.port != settings.port) {
+    // Another broker: probe Max Fragment Length again, starting from the full TLS buffers.
+    mflnChecked_ = false;
+    secure_.setBufferSizes(16384, 512);
+  }
   settings_ = settings;
-  anchors_.append(kIsrgRootX1);
-  anchors_.append(kIsrgRootX2);
-  secure_.setTrustAnchors(&anchors_);
+  // Name in the router's client list (DHCP): where to find the local page's address.
+  char hostname[41];
+  snprintf(hostname, sizeof(hostname), "estacao-%s", settings_.code);
+  hostname[32] = '\0';  // the core refuses names longer than 32 characters
+  WiFi.hostname(hostname);
 
   mqtt_ = std::make_unique<MQTTClient>(512, 2560);
   mqtt_->setKeepAlive(kKeepAliveS);
@@ -78,6 +94,18 @@ bool Link::wifiUp(RtcState& rtc, uint32_t timeoutMs) {
   if (hadWifi_) wifiReconnects_++;
   hadWifi_ = true;
   return true;
+}
+
+void Link::reconfigure(const MqttSettings& settings) {
+  mqttDisconnect();
+  begin(settings);
+}
+
+void Link::saveWifi() {
+  station_config config{};
+  wifi_station_get_config(&config);
+  config.bssid_set = 0;  // the access point may change; the channel/BSSID hint lives in RTC memory
+  wifi_station_set_config(&config);
 }
 
 void Link::wifiOff() {

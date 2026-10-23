@@ -20,6 +20,8 @@ struct DeviceConfig {
   uint16_t survivalBelowMv = 3450;
   uint16_t recoverAboveMv = 3800;
   uint16_t batFullScaleMv = 4200;
+  /** Password of the local configuration page; empty until the dashboard sends one. */
+  char localPassword[65] = {0};
 
   PowerThresholds thresholds() const { return {economyBelowMv, survivalBelowMv, recoverAboveMv}; }
 };

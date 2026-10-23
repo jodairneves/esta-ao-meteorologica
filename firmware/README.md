@@ -31,6 +31,7 @@ O script de testes usa o compilador C++ da máquina quando existe (`g++`) e, se 
 - **Medição:** um intervalo por `interval_s` (padrão 60 s), fechando em múltiplos do relógio. Vento em pulsos com a rajada de 3 s, chuva como contador acumulado do `run` (memória RTC), temperatura, umidade e pressão sem calibração. Valores não medidos vão como `null`.
 - **Entrega:** buffer de 120 leituras em RAM. Lotes de até 30 leituras com QoS 1, e uma leitura só sai do buffer depois do PUBACK. Buffer cheio descarta a mais antiga e gera `BUFFER_OVERFLOW`.
 - **Sessão MQTT:** client id `st-{código}`, sessão persistente, LWT `offline` retido; a cada conexão publica `online`, assina `config` e `cmd` e envia o diagnóstico.
+- **Página local:** no perfil Normal, `http://{ip}` (usuário `admin`, senha do painel; antes da primeira, a do portal) troca o servidor e a rede Wi-Fi. A alteração só é mantida se conectar em 2 minutos; senão a estação volta à anterior.
 - **Configuração remota:** aplicada quando a `rev` é maior que a guardada na flash. Trocar o servidor, o código ou a senha no portal apaga a guardada, porque um cadastro novo recomeça a numeração.
 - **Sem relógio:** leituras sem NTP esperam no buffer e recebem o horário quando ele responder; eventos e status vão com `ts` `null`.
 - **Robustez:** reconexão com espera de 5 s a 5 min; sem publicar por 30 min, reinicia o Wi-Fi; por 2 h, reinicia a placa (também na Economia). Um comando reentregue (por exemplo, depois de um `reboot`) não é executado duas vezes.

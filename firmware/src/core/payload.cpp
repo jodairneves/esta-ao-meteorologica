@@ -135,6 +135,11 @@ size_t writeHealth(const HealthInfo& h, char* out, size_t capacity) {
   } else {
     doc["cfg_rev"] = nullptr;
   }
+  if (h.ip != nullptr && h.ip[0] != '\0') {
+    doc["ip"] = h.ip;
+  } else {
+    doc["ip"] = nullptr;
+  }
   return finish(doc, out, capacity);
 }
 

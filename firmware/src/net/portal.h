@@ -18,4 +18,7 @@ bool runConfigPortal(MqttSettings& settings);
 /** Access point name of this board. */
 String portalName();
 
+/** Password of the configuration access point (PORTAL_PASSWORD build flag). */
+const char* portalPassword();
+
 }  // namespace wx

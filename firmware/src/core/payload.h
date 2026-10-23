@@ -63,6 +63,8 @@ struct HealthInfo {
   SensorHealth climateHealth = SensorHealth::Absent;
   /** Configuration revision applied (0 = none yet, sent as null). */
   uint32_t cfgRev = 0;
+  /** Address on the local network (null when not connected), where the local page answers. */
+  const char* ip = nullptr;
 };
 
 size_t writeHealth(const HealthInfo& health, char* out, size_t capacity);

@@ -40,17 +40,6 @@ void copy(char* to, size_t capacity, const char* from) {
 
 }  // namespace
 
-bool isValidStationCode(const char* code) {
-  const size_t length = strlen(code);
-  if (length < 3 || length > 32) return false;
-  for (size_t i = 0; i < length; i++) {
-    const char c = code[i];
-    const bool allowed = (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-';
-    if (!allowed) return false;
-  }
-  return code[0] != '-' && code[length - 1] != '-';
-}
-
 bool MqttSettings::complete() const {
   return host[0] != '\0' && port != 0 && isValidStationCode(code) && password[0] != '\0';
 }

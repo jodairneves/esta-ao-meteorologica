@@ -28,6 +28,10 @@ struct InboxMessage {
 class Link {
  public:
   void begin(const MqttSettings& settings);
+  /** New MQTT settings (local page): drops the session and starts over with them. */
+  void reconfigure(const MqttSettings& settings);
+  /** Keeps the Wi-Fi network in use across restarts (it is only in RAM until then). */
+  void saveWifi();
 
   /** Connects to the saved access point; uses the channel/BSSID in RTC memory to be quick. */
   bool wifiUp(RtcState& rtc, uint32_t timeoutMs);
@@ -69,6 +73,7 @@ class Link {
   WiFiClient plain_;
   BearSSL::WiFiClientSecure secure_;
   BearSSL::X509List anchors_;
+  bool anchorsReady_ = false;
   bool mflnChecked_ = false;
   // Created in begin(): until then its 3 KB of buffers stay with the configuration portal,
   // which builds each page in RAM.

@@ -100,6 +100,20 @@ ConfigParse parseConfig(const char* json, size_t length) {
     snprintf(result.reason, sizeof(result.reason), "economy_batch_s menor que interval_s");
     return result;
   }
+
+  // Optional: 8 to 64 printable ASCII characters without spaces (LOCAL_PASSWORD_PATTERN).
+  JsonVariantConst local = doc["local_password"];
+  if (!local.isNull()) {
+    const char* password = local.is<const char*>() ? local.as<const char*>() : "";
+    const size_t size = strlen(password);
+    bool valid = size >= 8 && size < sizeof(c.localPassword);
+    for (size_t i = 0; valid && i < size; i++) valid = password[i] >= 0x21 && password[i] <= 0x7e;
+    if (!valid) {
+      snprintf(result.reason, sizeof(result.reason), "local_password inválida");
+      return result;
+    }
+    memcpy(c.localPassword, password, size + 1);
+  }
   result.ok = true;
   return result;
 }
@@ -121,6 +135,7 @@ size_t writeConfig(const DeviceConfig& config, uint32_t rev, char* out, size_t c
   power["survival_below_mv"] = config.survivalBelowMv;
   power["recover_above_mv"] = config.recoverAboveMv;
   power["bat_full_scale_mv"] = config.batFullScaleMv;
+  if (config.localPassword[0] != '\0') doc["local_password"] = config.localPassword;
   return serializeJson(doc, out, capacity);
 }
 

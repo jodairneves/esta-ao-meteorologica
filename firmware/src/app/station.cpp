@@ -7,10 +7,13 @@
 
 #include <algorithm>
 #include <cstring>
+#include <memory>
 
 #include "core/command.h"
+#include "core/config_trial.h"
 #include "core/device_config.h"
 #include "core/gust.h"
+#include "core/local_form.h"
 #include "core/payload.h"
 #include "core/power_policy.h"
 #include "core/reading_buffer.h"
@@ -23,6 +26,7 @@
 #include "hw/pulse_counter.h"
 #include "hw/rtc_memory.h"
 #include "net/link.h"
+#include "net/local_page.h"
 #include "net/portal.h"
 #include "net/settings_store.h"
 
@@ -63,6 +67,17 @@ uint32_t millisIntoSecond() {
 }
 
 bool reached(uint32_t deadlineMs) { return static_cast<int32_t>(millis() - deadlineMs) >= 0; }
+
+void copyText(char* to, size_t capacity, const char* from) {
+  strncpy(to, from, capacity - 1);
+  to[capacity - 1] = '\0';
+}
+
+/** Another server or a new registration: it numbers its configuration revisions from 1 again. */
+bool newRegistration(const MqttSettings& before, const MqttSettings& after) {
+  return strcmp(before.host, after.host) != 0 || strcmp(before.code, after.code) != 0 ||
+         strcmp(before.password, after.password) != 0;
+}
 
 /** The `next` of a `sleeping` status: unknown (null) while the clock is not set. */
 uint32_t nextContactAt(uint32_t inS) {
@@ -115,6 +130,13 @@ class StationApp {
   bool publishHealth();
   bool publishStatus(LinkState state, uint32_t next);
   void checkWatchdogs();
+
+  // Local configuration page (design §4.5).
+  void serviceLocalPage();
+  LocalPageView localView();
+  void startTrial(const LocalForm& form);
+  void keepTrial();
+  void revertTrial(bool timedOut);
 
   // Remote configuration and commands.
   void processInbox();
@@ -171,6 +193,21 @@ class StationApp {
   uint32_t nextSessionMs_ = 0;
   uint32_t rebootAtMs_ = 0;
 
+  LocalPage localPage_;
+  ConfigTrial trial_;
+  /** Allocated only while a change from the local page waits to be applied or is on trial. */
+  struct TrialState {
+    LocalForm form;
+    MqttSettings previousMqtt;
+    char previousSsid[33] = {0};
+    char previousPsk[65] = {0};
+  };
+  std::unique_ptr<TrialState> trialState_;
+  uint32_t applyFormAtMs_ = 0;
+  /** New server or credentials on trial: its own retained configuration waits until it is kept. */
+  bool trialNewRegistration_ = false;
+  LocalPageView::LastChange lastLocalChange_ = LocalPageView::LastChange::None;
+
   PendingEvent events_[kEventQueue];
   size_t eventHead_ = 0;
   size_t eventCount_ = 0;
@@ -207,10 +244,8 @@ void StationApp::setup() {
         static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMaxFreeBlockSize()));
     const MqttSettings before = settings_;
     if (!runConfigPortal(settings_) && !settings_.complete()) sleepFor(kPortalRetrySleepS);
-    if (strcmp(before.host, settings_.host) != 0 || strcmp(before.code, settings_.code) != 0 ||
-        strcmp(before.password, settings_.password) != 0) {
-      // Another server or a new registration (from the bench to production, say) numbers its
-      // configuration revisions from 1 again: forget the one applied here.
+    if (newRegistration(before, settings_)) {
+      // From the bench to production, say: forget the configuration revision applied here.
       forgetDeviceConfig();
       config_ = DeviceConfig{};
       configRev_ = 0;
@@ -277,6 +312,7 @@ void StationApp::loop() {
   } else {
     serviceEconomy();
   }
+  serviceLocalPage();
   if (rebootAtMs_ != 0 && reached(rebootAtMs_)) {
     link_.mqttDisconnect();
     ESP.restart();
@@ -404,6 +440,13 @@ void StationApp::storePolicy() {
 
 void StationApp::applyModeChange(PowerMode from, PowerMode to) {
   LOG("perfil de energia: %s -> %s", powerModeName(from), powerModeName(to));
+  if (to != PowerMode::Normal) {
+    // Away from Normal the Wi-Fi sleeps: no local page, and a change on trial is undone.
+    if (trial_.active()) revertTrial(false);
+    applyFormAtMs_ = 0;
+    trialState_.reset();
+    localPage_.stop();
+  }
   if (to == PowerMode::Survival) {
     // Last chance to send what is buffered: wind and rain stop being counted while asleep.
     if (link_.mqttConnected() || openSession()) {
@@ -649,6 +692,8 @@ bool StationApp::publishHealth() {
   health.climate = climate_.kind();
   health.climateHealth = climateHealth_;
   health.cfgRev = configRev_;
+  const String ip = link_.wifiConnected() ? WiFi.localIP().toString() : String();
+  health.ip = ip.c_str();
   const size_t length = writeHealth(health, payload, sizeof(payload));
   if (length == 0 || !link_.publish("health", payload, length, false)) return false;
   lastHealthMs_ = millis();
@@ -681,6 +726,152 @@ void StationApp::checkWatchdogs() {
   }
 }
 
+// ---- local configuration page ---------------------------------------------------------------
+
+void StationApp::serviceLocalPage() {
+  if (policy_.mode() != PowerMode::Normal) return;
+  if (!localPage_.running() && link_.wifiConnected()) {
+    localPage_.begin(
+        // The dashboard's password once it arrives in the configuration; the portal's until then.
+        [this] { return config_.localPassword[0] != '\0' ? config_.localPassword : portalPassword(); },
+        [this] { return localView(); },
+        [this](const LocalForm& form) {
+          trialState_ = std::make_unique<TrialState>();
+          trialState_->form = form;
+          applyFormAtMs_ = millis() + 1'000;  // after the answer has left
+        },
+        [this] { rebootAtMs_ = millis() + 1'000; });
+    LOG("página local: http://%s (usuário admin)", WiFi.localIP().toString().c_str());
+  }
+  localPage_.loop();
+  if (applyFormAtMs_ != 0 && reached(applyFormAtMs_)) {
+    applyFormAtMs_ = 0;
+    startTrial(trialState_->form);
+  }
+  switch (trial_.update(millis(), link_.wifiConnected(), link_.mqttConnected())) {
+    case ConfigTrial::Outcome::Kept:
+      keepTrial();
+      break;
+    case ConfigTrial::Outcome::Reverted:
+      revertTrial(true);
+      break;
+    default:
+      break;
+  }
+}
+
+LocalPageView StationApp::localView() {
+  LocalPageView view;
+  view.code = settings_.code;
+  view.host = settings_.host;
+  view.port = settings_.port;
+  view.tls = settings_.tls;
+  view.mqttConnected = link_.mqttConnected();
+  view.mqttError = link_.mqttError();
+  view.mqttReturnCode = link_.mqttReturnCode();
+  view.firmware = FW_VERSION;
+  view.trialSecondsLeft = trial_.secondsLeft(millis());
+  view.changePending = applyFormAtMs_ != 0 || trial_.active();
+  view.lastChange = lastLocalChange_;
+  return view;
+}
+
+void StationApp::startTrial(const LocalForm& form) {
+  MqttSettings next = settings_;
+  copyText(next.host, sizeof(next.host), form.host);
+  next.port = form.port;
+  next.tls = form.tls;
+  copyText(next.code, sizeof(next.code), form.code);
+  if (form.password[0] != '\0') copyText(next.password, sizeof(next.password), form.password);
+  const bool serverChanged =
+      newRegistration(settings_, next) || next.port != settings_.port || next.tls != settings_.tls;
+  const String ssid = WiFi.SSID();
+  const String psk = WiFi.psk();
+  const bool wifiChanged = form.ssid[0] != '\0' && (ssid != form.ssid || psk != form.wifiPassword);
+  if (!serverChanged && !wifiChanged) {
+    LOG("página local: nada mudou");
+    trialState_.reset();
+    return;
+  }
+
+  trialState_->previousMqtt = settings_;
+  copyText(trialState_->previousSsid, sizeof(trialState_->previousSsid), ssid.c_str());
+  copyText(trialState_->previousPsk, sizeof(trialState_->previousPsk), psk.c_str());
+  trialNewRegistration_ = newRegistration(settings_, next);
+  trial_.start(millis(), wifiChanged, serverChanged);
+  lastLocalChange_ = LocalPageView::LastChange::None;
+  if (serverChanged) {
+    settings_ = next;
+    link_.reconfigure(settings_);
+  }
+  if (wifiChanged) {
+    // Only in RAM (persistent off): a restart during the trial comes back on the old network.
+    link_.mqttDisconnect();
+    rtc_.wifiChannel = 0;  // the fast-reconnect hint belongs to the old network
+    WiFi.disconnect();
+    WiFi.begin(form.ssid, form.wifiPassword);
+  }
+  nextConnectAttemptMs_ = millis();
+  backoffMs_ = kBackoffMinMs;
+  LOG("página local: testando %s por até 2 min",
+      wifiChanged && serverChanged ? "o servidor e a rede Wi-Fi"
+      : wifiChanged                ? "a rede Wi-Fi"
+                                   : "o servidor");
+}
+
+void StationApp::keepTrial() {
+  if (trial_.serverChanged()) {
+    saveMqttSettings(settings_);
+    if (trialNewRegistration_) {
+      // Its retained configuration was held back during the trial: start from the defaults and
+      // fetch it again on the next subscription.
+      forgetDeviceConfig();
+      config_ = DeviceConfig{};
+      configRev_ = 0;
+      pulses_.setRainEdge(config_.rainEdge);
+      scheduleIntervalEnd();
+      link_.mqttDisconnect();
+      nextConnectAttemptMs_ = millis();
+    }
+  }
+  if (trial_.wifiChanged()) link_.saveWifi();
+  trialNewRegistration_ = false;
+  lastLocalChange_ = LocalPageView::LastChange::Kept;
+  char data[48];
+  snprintf(data, sizeof(data), "{\"wifi\":%s,\"server\":%s}", trial_.wifiChanged() ? "true" : "false",
+           trial_.serverChanged() ? "true" : "false");
+  queueEvent(EventLevel::Info, "LOCAL_CONFIG_APPLIED", "Configuração alterada pela página local", data);
+  LOG("página local: alteração mantida");
+  trialState_.reset();
+}
+
+void StationApp::revertTrial(bool timedOut) {
+  trial_.cancel();
+  if (trial_.serverChanged()) {
+    settings_ = trialState_->previousMqtt;
+    link_.reconfigure(settings_);
+  }
+  if (trial_.wifiChanged()) {
+    link_.mqttDisconnect();
+    rtc_.wifiChannel = 0;
+    WiFi.disconnect();
+    WiFi.begin(trialState_->previousSsid, trialState_->previousPsk);
+  }
+  trialNewRegistration_ = false;
+  nextConnectAttemptMs_ = millis();
+  backoffMs_ = kBackoffMinMs;
+  lastLocalChange_ = LocalPageView::LastChange::Reverted;
+  char data[48];
+  snprintf(data, sizeof(data), "{\"wifi\":%s,\"server\":%s}", trial_.wifiChanged() ? "true" : "false",
+           trial_.serverChanged() ? "true" : "false");
+  queueEvent(EventLevel::Warn, "LOCAL_CONFIG_REVERTED",
+             timedOut ? "Configuração da página local desfeita: não conectou em 2 minutos"
+                      : "Configuração da página local desfeita: o perfil de energia saiu do Normal",
+             data);
+  LOG("página local: alteração desfeita (%s)", timedOut ? "não conectou em 2 min" : "perfil de energia");
+  trialState_.reset();
+}
+
 // ---- remote configuration and commands -----------------------------------------------------
 
 void StationApp::processInbox() {
@@ -695,6 +886,7 @@ void StationApp::processInbox() {
 }
 
 void StationApp::handleConfig(const char* json, size_t length) {
+  if (trial_.active() && trialNewRegistration_) return;
   const ConfigParse parsed = parseConfig(json, length);
   // The configuration is retained: it comes back on every connection.
   if (parsed.rev == 0 || parsed.rev <= configRev_) return;

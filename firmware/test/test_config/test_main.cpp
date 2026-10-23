@@ -1,6 +1,7 @@
 #include <unity.h>
 
 #include <cstring>
+#include <initializer_list>
 #include <string>
 
 #include "core/device_config.h"
@@ -71,6 +72,29 @@ void test_round_trips_through_flash_storage() {
   TEST_ASSERT_EQUAL(wx::RainEdge::Falling, again.config.rainEdge);
 }
 
+void test_takes_the_local_page_password_when_present() {
+  const ConfigParse absent = parse(kValid);
+  TEST_ASSERT_EQUAL_STRING("", absent.config.localPassword);
+
+  const ConfigParse present = parse(replaced("\"rev\":3", "\"rev\":3,\"local_password\":\"k7mp-9xq2-rt4w\""));
+  TEST_ASSERT_TRUE(present.ok);
+  TEST_ASSERT_EQUAL_STRING("k7mp-9xq2-rt4w", present.config.localPassword);
+
+  char out[512];
+  const size_t length = wx::writeConfig(present.config, present.rev, out, sizeof(out));
+  const ConfigParse stored = wx::parseConfig(out, length);
+  TEST_ASSERT_EQUAL_STRING("k7mp-9xq2-rt4w", stored.config.localPassword);
+}
+
+void test_rejects_a_weak_or_spaced_local_page_password() {
+  for (const char* bad : {"\"curta\"", "\"com espaco\"", "42"}) {
+    const std::string field = std::string("\"rev\":3,\"local_password\":") + bad;
+    const ConfigParse result = parse(replaced("\"rev\":3", field.c_str()));
+    TEST_ASSERT_FALSE(result.ok);
+    TEST_ASSERT_NOT_NULL(strstr(result.reason, "local_password"));
+  }
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_accepts_the_server_default_configuration);
@@ -79,5 +103,7 @@ int main() {
   RUN_TEST(test_rejects_a_batch_shorter_than_the_interval);
   RUN_TEST(test_rejects_unknown_enums_and_broken_json);
   RUN_TEST(test_round_trips_through_flash_storage);
+  RUN_TEST(test_takes_the_local_page_password_when_present);
+  RUN_TEST(test_rejects_a_weak_or_spaced_local_page_password);
   return UNITY_END();
 }

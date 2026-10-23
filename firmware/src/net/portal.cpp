@@ -24,6 +24,8 @@ void copy(char* to, size_t capacity, const char* from) {
 
 }  // namespace
 
+const char* portalPassword() { return PORTAL_PASSWORD; }
+
 String portalName() {
   char name[24];
   snprintf(name, sizeof(name), "Estacao-%06X", ESP.getChipId());

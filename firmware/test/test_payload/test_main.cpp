@@ -98,6 +98,11 @@ void test_health_reports_the_climate_sensor_of_the_station_version() {
   TEST_ASSERT_NOT_NULL(strstr(out, R"("sensors":{"bme280":"absent","htu21d":"ok","wind":"ok","rain":"ok"})"));
   TEST_ASSERT_NOT_NULL(strstr(out, R"("bat_mv":null)"));
   TEST_ASSERT_NOT_NULL(strstr(out, R"("cfg_rev":null)"));
+  TEST_ASSERT_NOT_NULL(strstr(out, R"("ip":null)"));
+
+  health.ip = "10.25.50.111";
+  wx::writeHealth(health, out, sizeof(out));
+  TEST_ASSERT_NOT_NULL(strstr(out, R"("ip":"10.25.50.111")"));
 }
 
 void test_events_carry_their_data() {
