@@ -46,6 +46,9 @@ Sistema de monitoramento de estações meteorológicas DIY (Wemos D1 mini/ESP826
 | `pnpm db:migrate` | Aplica migrações + configurações padrão (`DATABASE_URL`) |
 | `pnpm --filter @wx/db exec drizzle-kit generate --name <nome>` | Gera migração nova a partir de `packages/db/src/schema` |
 | `pnpm mqtt:bootstrap` | Configura papéis/ACLs e o cliente `collector` no broker (idempotente) |
+| `pnpm db:seed` | Estações de demonstração (`sede`, `pivo-norte`, `talhao-sul`) + credenciais em `tools/simulator/.stations.json` (git-ignored) |
+| `pnpm dev:collector` | App 1 com recarga automática (tsx watch) |
+| `pnpm simulate [--backfill 7d] [--interval 10] [--chaos [--chaos-rate N]] [--only a,b]` | Estações virtuais (contrato v1 completo) |
 | `pnpm check` | Biome + typecheck (todos os pacotes) + testes unitários |
 | `pnpm test:int` | Testes de integração (exigem `pnpm infra:up`; usam o banco `weather_test`) |
 | `pnpm format` | Formata e organiza imports |
@@ -60,12 +63,18 @@ Sistema de monitoramento de estações meteorológicas DIY (Wemos D1 mini/ESP826
 - **Postgres 18 (imagem Docker):** o volume vai em `/var/lib/postgresql` (não em `/data`). `uuidv7()` é nativo.
 - **`packages/shared`** roda no Node e no navegador: `lib` = `es2024` + `webworker` (sem DOM e sem tipos do Node).
 - **Pacotes internos** são consumidos como código-fonte TS (`exports` → `src/index.ts`); apps usam tsx em dev e bundle em produção. Bundles precisam passar `migrationsFolder` explicitamente para `prepareDatabase()`.
-- **Testes de integração do MQTT** usam um cliente próprio com o papel `collector`, nunca o client id `collector` (para não apagar a sessão persistente do coletor real).
+- **Testes de integração do MQTT** usam um cliente próprio com o papel `collector`, nunca o client id `collector` (para não apagar a sessão persistente do coletor real). Efeito colateral esperado: o broker guarda para a sessão do coletor de dev as mensagens das estações de teste (`itest-*`, `itc-*`), que viram logs `UNKNOWN_STATION` no banco de dev quando ele volta.
+- **Coletor — ack após commit:** `client.handleMessage` do mqtt.js é sobrescrito; o PUBACK só sai quando o callback é chamado. Se o banco cair, o consumidor desconecta sem confirmar (`pause`) e reconecta quando `select 1` volta a funcionar; o broker reentrega. Por isso **todo handler precisa ser idempotente** (leituras: `(station_id, run, seq)`; diagnósticos: `(station_id, ts)`).
+- **Classificação de falhas no coletor:** não há lista de códigos de erro do Postgres. Se o handler falha e `select 1` também, é queda do banco (pausa); se o banco responde, tenta de novo uma vez e depois descarta com log `PROCESSING_FAILED`.
+- **Status retido:** ao (re)assinar, o broker reenvia os `status` retidos; o coletor só os aplica para estação com estado desconhecido e nunca os conta como contato.
+- **`tsx`, `typescript` e `vitest` ficam na raiz** do monorepo (`node_modules/.bin` da raiz).
+- **Simulador:** `--interval` só acelera as leituras; o monitor usa o intervalo configurado no banco (60 s). Intervalo maior que o configurado gera alerta de estação sem contato. O `--backfill` consulta a última leitura de cada estação no banco para não duplicar histórico.
 
 ## Estado atual
 
 - **Fase 1 — Fundação:** concluída (2026-10-22).
-- **Próxima:** Fase 2 — App 1 (Coletor) + simulador de estações.
+- **Fase 2 — Coletor + simulador:** concluída (2026-10-23).
+- **Próxima:** Fase 3 — App 2 (API do Dashboard). O primeiro admin (`ADMIN_EMAIL`/`ADMIN_PASSWORD`) ainda não existe: o hash de senha (argon2id) entra com a API.
 - **Hardware do usuário:** D1 mini, BME280, anemômetro e pluviômetro impressos em 3D (modelos MakerWorld), bateria de lítio e talvez um painel solar pequeno.
 - **Produção:** VPS com Coolify **ou** servidor local com Cloudflare Tunnel (painel) e port forward (MQTT 8883).
 
@@ -106,3 +115,26 @@ Sistema de monitoramento de estações meteorológicas DIY (Wemos D1 mini/ESP826
 - **Testes de integração** (17, contra serviços reais):
   - Banco: migração do zero, concorrência, constraints, UUIDv7, NOTIFY só após commit.
   - Broker: isolamento entre estações, client id obrigatório, troca de senha, desativação derrubando a conexão, remoção limpando os retidos.
+
+### 2026-10-23 — Fase 2: Coletor (App 1) e simulador
+- **`apps/collector`:**
+  - Consumidor MQTT com sessão persistente e ack depois do commit. Se o banco cai, a coleta pausa e é retomada sem perda.
+  - Roteador com validação do contrato e handlers de telemetria, status, saúde e evento, cada um numa transação com `NOTIFY` entregue no commit.
+  - Processamento puro da telemetria: calibração, derivados, chuva por diferença, faixas físicas e janela de horário.
+  - Estado da estação, situação dos sensores e alertas (`station_offline`, `sensor_stale`, `sensor_error`, `battery_low`/`critical`, `data_dropped`) com abertura e resolução automáticas.
+  - Monitor a cada 60 s, heartbeat a cada 30 s, retenção a cada 6 h.
+  - Logs em pt-BR no `event_logs`, com limitação de repetição (1 a cada 10 min por estação e problema).
+- **`tools/simulator`:**
+  - Modelos de clima (ciclo diário, frentes, maré barométrica, chuva por cadeia de Markov) e de energia (Li-ion, solar, perfis com histerese, brownout).
+  - Estação virtual que segue o contrato v1 como o firmware deverá seguir: perfis normal/economia/sobrevivência, buffer com envio posterior, configuração retida, comandos e caos.
+  - `pnpm db:seed` cria as 3 estações de demonstração; `pnpm simulate --backfill 7d` publica o histórico sem duplicar.
+- **Ajustes:**
+  - Migração `0001`: `device_health (station_id, ts)` passou a ser único, para deduplicar reentregas.
+  - `statement_timeout` no pool.
+  - `stationLabel()` evita "Estação Estação Sede".
+  - Retidos de estações desconhecidas ou inativas são ignorados.
+- **Validação:**
+  - 135 testes unitários e 31 de integração.
+  - 14 cenários do coletor contra serviços reais, inclusive queda do banco no meio da coleta, sem perda.
+  - Ponta a ponta: 26,4 mil leituras de 7 dias gravadas, com derivados coerentes (pressão ao nível do mar ≈ 1013 hPa). O caos exercitou LWT, falta de energia (novo `run`), envio do buffer depois da reconexão, duplicatas descartadas e payload inválido registrado.
+- **Pendente para a Fase 3:** criar o primeiro admin (precisa do argon2id da API).

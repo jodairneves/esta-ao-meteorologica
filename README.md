@@ -8,7 +8,7 @@ Sistema de monitoramento de estações meteorológicas DIY baseadas no **Wemos D
 
 O design completo está em [`docs/superpowers/specs/2026-10-22-estacao-meteorologica-design.md`](docs/superpowers/specs/2026-10-22-estacao-meteorologica-design.md) e o plano por fases em [`docs/superpowers/plans/2026-10-22-plano-de-implementacao.md`](docs/superpowers/plans/2026-10-22-plano-de-implementacao.md).
 
-> **Status:** Fase 1 (Fundação) concluída — contrato MQTT, banco de dados e administração do broker. Coletor, dashboard, firmware e deploy vêm nas próximas fases.
+> **Status:** Fases 1 e 2 concluídas — contrato MQTT, banco de dados, administração do broker, **coletor (App 1)** e **simulador de estações**. Dashboard, firmware e deploy vêm nas próximas fases.
 
 ## Pré-requisitos
 
@@ -25,6 +25,16 @@ pnpm db:migrate          # cria o esquema do banco
 pnpm mqtt:bootstrap      # cria papéis e o cliente do coletor no Mosquitto
 ```
 
+### Ver dados fluindo sem hardware
+
+```bash
+pnpm db:seed                         # 3 estações de demonstração (banco + credenciais MQTT)
+pnpm dev:collector                   # App 1: MQTT → PostgreSQL (deixe rodando)
+pnpm simulate --backfill 7d          # em outro terminal: 7 dias de histórico + tempo real
+```
+
+Opções do simulador: `--interval 10` (leituras mais frequentes), `--chaos` (falhas de sensor, quedas de Wi-Fi, falta de energia, duplicatas e payloads inválidos), `--chaos-rate 5` e `--only sede,pivo-norte`. As estações de demonstração cobrem os três perfis de energia: `sede` (solar folgado), `pivo-norte` (solar justo) e `talhao-sul` (bateria fraca, entra em economia e sobrevivência).
+
 ## Comandos
 
 | Comando | O que faz |
@@ -36,15 +46,21 @@ pnpm mqtt:bootstrap      # cria papéis e o cliente do coletor no Mosquitto
 | `pnpm db:migrate` | Aplica as migrações pendentes e as configurações padrão |
 | `pnpm db:generate --name <nome>` | Gera uma nova migração a partir do esquema (`packages/db/src/schema`) |
 | `pnpm mqtt:bootstrap` | Configura o broker (idempotente) |
+| `pnpm db:seed` | Cria/atualiza as estações de demonstração e as credenciais do simulador |
+| `pnpm dev:collector` | Coletor (App 1) com recarga automática |
+| `pnpm simulate` | Estações virtuais (ver opções acima; `--help`) |
 
 ## Estrutura
 
 ```
-apps/            # coletor (App 1) e dashboard (App 2) — próximas fases
+apps/
+  collector/     # App 1: MQTT → PostgreSQL, status, saúde, alertas e logs
 packages/
   shared/        # contrato MQTT (zod), domínio e fórmulas meteorológicas (Node e navegador)
   db/            # esquema Drizzle, migrações, LISTEN/NOTIFY
   mqtt-admin/    # Dynamic Security do Mosquitto: papéis e credenciais das estações
+tools/
+  simulator/     # estações virtuais (clima, bateria/solar, perfis de energia, falhas)
 infra/           # compose de desenvolvimento e configuração do Mosquitto
 docs/            # design, plano e guias
 ```
