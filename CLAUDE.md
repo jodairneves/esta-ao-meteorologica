@@ -180,7 +180,17 @@ Sistema de monitoramento de estações meteorológicas DIY (Wemos D1 mini/ESP826
   - primeiro no Coolify de casa (`docker-compose.home.yaml`, broker de produção do usuário, login único);
   - depois na VPS da Hostinger (`docker-compose.yaml`, tudo novo).
   - O painel fica em `estacao.jodairneves.dev.br`; as estações recebem o endereço do MQTT pelo portal ou pela página local.
-  - Falta medir de novo, na bancada, a memória do portal com o campo "Usuário MQTT".
+  - Falta medir de novo, na bancada, a memória do portal com o campo "Usuário MQTT" (ao abrir o portal, antes do celular: 24,6 KB livres).
+- **Deploy em casa (2026-10-23):** feito. O painel abre em `estacao.jodairneves.dev.br` pelo túnel, e o coletor e o painel estão no broker de produção com o login único.
+- **Bancada, pendências:**
+  - O D1 mini (MAC `cc:50:e3:08:08:e6`) foi apagado com `pio run -t erase` e recebeu o firmware novo. Está configurado com a estação `estacao-teste`, o servidor do DDNS de casa e o usuário do broker.
+  - O Wi-Fi salvo é o hotspot de 2,4 GHz do celular do usuário. Ele o criou para testar o acesso externo: a estação sai pelos dados móveis e volta pelo DDNS de casa.
+  - O Wi-Fi não conecta: o log repete "Wi-Fi indisponível" depois de 15 s. Suspeitas:
+    - hotspot desligado ou invisível;
+    - segurança WPA3 (o ESP8266 só faz WPA2; no iPhone, "Maximizar compatibilidade"; no Android, "WPA2-Personal");
+    - senha digitada errada.
+  - Próximo passo: refazer o Wi-Fi no portal com o log serial aberto, porque o WiFiManager mostra o resultado da conexão.
+  - Investigar um reset de watchdog (`rst cause:4`, cerca de 13 s depois do boot) no perfil Sobrevivência. Aconteceu uma vez, com o estado antigo da memória RTC (veja a nota de 2026-10-23 em "Registro").
 - O primeiro admin (`ADMIN_EMAIL`/`ADMIN_PASSWORD`) é criado pela API ao subir (hash argon2id).
 - **Hardware do usuário:** D1 mini, BME280, anemômetro e pluviômetro impressos em 3D (modelos MakerWorld), bateria de lítio e talvez um painel solar pequeno.
 - **Produção:**
@@ -446,3 +456,15 @@ Sistema de monitoramento de estações meteorológicas DIY (Wemos D1 mini/ESP826
   - retidos limpos na exclusão;
   - backup só do banco.
 - **Testes:** 167 unitários, 65 de integração (5 novos do modo compartilhado), 13 E2E e 62 nativos do firmware.
+
+### 2026-10-23 — Deploy em casa
+- **Banco recusando a senha (`password authentication failed`):** o volume do banco era de um deploy anterior, criado com outra `POSTGRES_PASSWORD`. O usuário recriou o projeto no Coolify.
+  - Correção preventiva: a senha vai em `PGPASSWORD`, fora da URL. Dentro da URL, `%41` vira `A` e uma quebra de linha some.
+  - Para um volume com senha antiga, use `\password weather` no `psql` do container, sem apagar nada.
+- **"no available server":** o domínio estava no `wx-collector`. O proxy registrou `port is missing`, e o `wx-dashboard` ficou sem rótulos `traefik`. Com o domínio no `wx-dashboard`, `:3000`, o painel abriu.
+- **Coolify e variáveis no build:** o Coolify injeta todas as variáveis do recurso como `ARG` no `Dockerfile` ("Added 85 ARG declarations"), e as senhas acabam no histórico das imagens. As imagens não precisam de variável no build: desmarcar "Build Variable" nas variáveis do recurso.
+- **D1 mini:**
+  - O `erase_flash` não limpa a memória RTC enquanto a placa fica ligada no USB.
+  - Um reset pelo RST durante o sono profundo conta como `REASON_DEEP_SLEEP_AWAKE`. Por isso a placa voltou no perfil Sobrevivência do estado antigo e teve um reset de watchdog.
+  - Depois disso, no perfil Normal, ficou em "Wi-Fi indisponível" (veja "Bancada, pendências").
+  - Abrir a porta serial reinicia a placa. O `serial-log.py` termina com `SerialException` quando o cabo é desconectado.
