@@ -730,7 +730,7 @@ Por bucket: média, mínimo e máximo de temperatura, umidade, pressão, pressã
 |---|---|---|
 | `/login` | Login | E-mail, senha, "manter conectado" |
 | `/` | Visão geral | Um cartão por estação (status em cor, valores atuais, chuva de hoje, mini-gráfico de 24 h, bateria); mapa (MapLibre GL, tiles OpenFreeMap sem chave) inclinado em 3D com as estações como colunas proporcionais ao valor escolhido; alertas ativos; saúde do sistema |
-| `/estacoes/:code` | Estação | **Cena 3D** (React Three Fiber, geometria procedural): mastro, anemômetro girando na velocidade medida, pluviômetro, abrigo, painel solar e bateria, LED com a cor do status, céu conforme a hora local e o sol (`suncalc`), partículas de chuva quando chove; arrastar para girar. Indicadores ao vivo: temperatura (sensação térmica, mín./máx. do dia), umidade e ponto de orvalho, pressão da estação e ao nível do mar com tendência de 3 h, altitude barométrica, vento médio, rajada e Beaufort, chuva (1 h, hoje, mês) e taxa, bateria e sinal. Gráficos ECharts com períodos (24 h, 7 d, 30 d, 1 ano, personalizado) e zoom: temperatura (faixa mín.–máx. e média), umidade e ponto de orvalho, pressão, vento e rajada, chuva (barras e acumulado). Mapa de calor hora × dia (com versão 3D via echarts-gl), calendário de chuva diária e tabela diária com exportação CSV |
+| `/estacoes/:code` | Estação | **Cena 3D** (React Three Fiber, geometria procedural): mastro, anemômetro girando na velocidade medida, pluviômetro, abrigo, painel solar e bateria, LED com a cor do status, céu conforme a hora local e a posição do sol (calculada no próprio app), partículas de chuva quando chove; arrastar para girar. Indicadores ao vivo: temperatura (sensação térmica, mín./máx. do dia), umidade e ponto de orvalho, pressão da estação e ao nível do mar com tendência de 3 h, altitude barométrica, vento médio, rajada e Beaufort, chuva (1 h, hoje, mês) e taxa, bateria e sinal. Gráficos ECharts com períodos (24 h, 7 d, 30 d, 1 ano, personalizado) e zoom: temperatura (faixa mín.–máx. e média), umidade e ponto de orvalho, pressão, vento e rajada, chuva (barras e acumulado). Mapa de calor hora × dia (com versão 3D em React Three Fiber), calendário de chuva diária e tabela diária com exportação CSV |
 | `/comparar` | Comparar | Mesma grandeza de várias estações num gráfico |
 | `/dispositivos` | Dispositivos | Por estação: perfil de energia, bateria (V e %) e sinal ao longo do tempo, resets, firmware, buffer e descartes, linha do tempo de conexão e situação de cada sensor ("último dado há X min") |
 | `/alertas` | Alertas | Ativos e histórico; reconhecimento |
@@ -740,15 +740,17 @@ Por bucket: média, mínimo e máximo de temperatura, umidade, pressão, pressã
 | `/admin/configuracoes` | Configurações (admin) | Retenção e limiares de monitoramento |
 | `/perfil` | Meu perfil | Trocar a senha |
 
-Status da estação na interface: **Online** (verde), **Dormindo** (azul, sem contato esperado até `next`), **Sem contato** (âmbar/vermelho, alerta `station_offline` ativo), **Desconhecido** (cinza, nunca conectou) e **Desativada** (cinza). A cor nunca aparece sozinha: sempre com ícone e texto.
+Status da estação na interface: **Online** (verde), **Dormindo** (neutro, com ícone de lua; sem contato esperado até `next`), **Sem contato** (âmbar/vermelho, alerta `station_offline` ativo), **Nunca conectou** (neutro) e **Desativada** (neutro). O azul fica reservado à chuva. A cor nunca aparece sozinha: sempre com ícone e texto.
 
 ### 8.8 Identidade visual
 
-- Tema escuro meteorológico por padrão, com modo claro opcional.
-- Uma cor fixa por grandeza (temperatura em rampa fria→quente, umidade, pressão, vento, rajada, chuva, bateria), definida como tokens CSS na Fase 4 e validada para contraste nos dois temas.
-- Cartões com efeito de vidro leve; animações suaves que respeitam `prefers-reduced-motion` (a cena 3D fica estática).
-- Responsivo para celular; textos em pt-BR; números no formato brasileiro; unidades °C, %, hPa, km/h (m/s opcional) e mm.
-- Cena 3D, ECharts GL e mapa carregados sob demanda (code splitting).
+- "Painel de instrumentos ao anoitecer": tema escuro por padrão (ardósia), com modo claro opcional. A cor fica reservada aos dados e ao status; a moldura é monocromática.
+- Uma cor fixa por grandeza, igual em todas as telas: chuva azul, temperatura laranja (rampa sequencial laranja no mapa de calor), ponto de orvalho verde-água, umidade violeta, pressão magenta, vento verde (a rajada é uma faixa do mesmo verde). Paleta validada para daltonismo e contraste nos dois temas (`validate_palette.js`); a bateria usa as cores de status.
+- Status nunca só por cor: sempre ícone + texto (bom, atenção, sério, crítico).
+- Tipografia: Archivo (variável) em três larguras: expandida nos títulos, intermediária nos valores e condensada nas tabelas.
+- Painéis sólidos com bordas finas (sem efeito de vidro). O movimento fica onde é dado: o anemômetro e a chuva da cena 3D. Com `prefers-reduced-motion`, a cena fica estática.
+- Responsivo para celular; textos em pt-BR; números no formato brasileiro; unidades °C, %, hPa, km/h e mm.
+- Cena 3D, mapa de calor 3D, mapa e gráficos carregados sob demanda (code splitting).
 
 ---
 

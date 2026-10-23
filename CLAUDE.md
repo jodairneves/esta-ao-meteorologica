@@ -47,9 +47,12 @@ Sistema de monitoramento de estações meteorológicas DIY (Wemos D1 mini/ESP826
 | `pnpm --filter @wx/db exec drizzle-kit generate --name <nome>` | Gera migração nova a partir de `packages/db/src/schema` |
 | `pnpm mqtt:bootstrap` | Configura papéis/ACLs e o cliente `collector` no broker (idempotente) |
 | `pnpm db:seed` | Estações de demonstração (`sede`, `pivo-norte`, `talhao-sul`) + credenciais em `tools/simulator/.stations.json` (git-ignored) |
-| `pnpm dev:collector` | App 1 com recarga automática (tsx watch) |
+| `pnpm dev` | Coletor + API do dashboard (3300) + Vite (5173), em paralelo |
+| `pnpm dev:collector` / `pnpm dev:dashboard` | Só o App 1, ou só a API + Vite do App 2 |
+| `pnpm --filter @wx/dashboard build` | SPA em `apps/dashboard/dist/web`; a API a serve quando `WEB_DIST` aponta para lá |
+| `pnpm --filter @wx/dashboard e2e` | Playwright contra o sistema rodando (`E2E_BASE_URL`, padrão `http://localhost:5173`) |
 | `pnpm simulate [--backfill 7d] [--interval 10] [--chaos [--chaos-rate N]] [--only a,b]` | Estações virtuais (contrato v1 completo) |
-| `pnpm check` | Biome + typecheck (todos os pacotes) + testes unitários |
+| `pnpm check` | Biome + typecheck (todos os pacotes, inclusive web e e2e) + testes unitários |
 | `pnpm test:int` | Testes de integração (exigem `pnpm infra:up`; usam o banco `weather_test`) |
 | `pnpm format` | Formata e organiza imports |
 
@@ -72,15 +75,25 @@ Sistema de monitoramento de estações meteorológicas DIY (Wemos D1 mini/ESP826
 - **Drizzle — arrays no template `sql`:** `${[a, b]}` vira `($1, $2)`. Use `col in ${ids}`; `= any(${ids})` gera SQL inválido.
 - **Fastify 5.12:** `disableRequestLogging` está obsoleto; use `logController: new LogController({ disableRequestLogging: true })`.
 - **Escrita de arquivos por ferramenta:** escapes `\uXXXX` dentro do conteúdo viram o caractere literal (invisível no caso de BOM e acentos combinantes). Use `String.fromCharCode(0xfeff)` ou classes como `\p{M}`.
-- **Dashboard em dev:** servidor na porta 3300; `APP_URL=http://localhost:5173` (Vite) é a origem aceita pelo CSRF.
+- **Dashboard em dev:** servidor em `127.0.0.1:3300` (`HOST`/`PORT`; o padrão `0.0.0.0` é para containers); `APP_URL=http://localhost:5173` (Vite) é a origem aceita pelo CSRF; o proxy do Vite aponta para `127.0.0.1`.
+- **Web — MapLibre 6:** o worker é um arquivo separado; `components/map/base-map.ts` chama `setWorkerUrl()` com o `?url` do Vite. O CSS do MapLibre não está em `@layer` e por isso vence os utilitários do Tailwind 4 (que estão): o contêiner entregue ao mapa ganha `position: relative` e perde o `absolute inset-0` (o mapa fica com altura 0). A caixa posicionada fica num wrapper; os controles são tematizados em `map-theme.css`, importado depois do CSS do MapLibre.
+- **Web — rótulos 3D:** o `<Html>` do drei cria uma raiz React por rótulo, e o StrictMode do React 19 desmonta raízes durante o render ("synchronously unmount a root"), perdendo rótulos. Use `ScreenAnchors` (`components/station/scene/screen-anchors.tsx`): elementos DOM comuns posicionados por projeção a cada quadro.
+- **Web — three 0.186 / R3F 9:** `shadows` sem valor pede PCFSoft, que foi removido; use `shadows="percentage"`. Em `frameloop="demand"` (reduzir movimento) é preciso `invalidate()` quando só o DOM muda.
+- **Web — ECharts:** as cores vêm de variáveis CSS lidas em tempo de execução (`chartTokens()`), então o `theme` precisa estar nas dependências do `useMemo` da opção (com `biome-ignore` justificado). Séries de estações em economia são esparsas: na comparação cada linha tem o próprio eixo de tempo (`LineSeries.t`) e as quebras usam o passo típico da própria série (`withGaps`).
+- **Web — cores das séries de estações:** posições fixas `--series-1…6` (`lib/series-colors.ts`); a cor segue a estação, nunca a posição na seleção.
+- **Web — 401 no console:** com a sessão expirada, `/auth/me` responde 401 e o navegador registra o erro de rede; é esperado (o guard manda para o login).
+- **Playwright:** no headless, WebGL (mapa e cenas 3D) precisa de `--use-angle=swiftshader` (já no `playwright.config.ts`). O login aceita 5 tentativas por minuto por IP+e-mail: a suíte faz 2 logins do admin, então rodá-la 3 vezes no mesmo minuto dá 429.
+- **Biome:** `css.parser.tailwindDirectives` ligado (para `@theme`); `noLabelWithoutControl` conhece `Input`, `Select` e `PasswordInput` como controles.
 - **Simulador:** `--interval` só acelera as leituras; o monitor usa o intervalo configurado no banco (60 s). Intervalo maior que o configurado gera alerta de estação sem contato. O `--backfill` consulta a última leitura de cada estação no banco para não duplicar histórico.
 
 ## Estado atual
 
 - **Fase 1 — Fundação:** concluída (2026-10-22).
 - **Fase 2 — Coletor + simulador:** concluída (2026-10-23).
-- **Em andamento (pedido do usuário em 2026-10-23):** Fase 3 (API do Dashboard) e Fase 4 (Web), seguidas sem checkpoint intermediário, até o teste do dashboard de ponta a ponta com os dados fictícios do simulador. Depois disso: checkpoint antes das Fases 5 (firmware) e 6 (deploy).
-- O primeiro admin (`ADMIN_EMAIL`/`ADMIN_PASSWORD`) é criado pela API na Fase 3 (hash argon2id).
+- **Fase 3 — API do Dashboard:** concluída (2026-10-23).
+- **Fase 4 — Web:** concluída (2026-10-23), com o teste de ponta a ponta usando os dados fictícios do simulador.
+- **Próximo passo:** checkpoint com o usuário antes das Fases 5 (firmware) e 6 (deploy).
+- O primeiro admin (`ADMIN_EMAIL`/`ADMIN_PASSWORD`) é criado pela API ao subir (hash argon2id).
 - **Hardware do usuário:** D1 mini, BME280, anemômetro e pluviômetro impressos em 3D (modelos MakerWorld), bateria de lítio e talvez um painel solar pequeno.
 - **Produção:** VPS com Coolify **ou** servidor local com Cloudflare Tunnel (painel) e port forward (MQTT 8883).
 
@@ -159,3 +172,31 @@ Sistema de monitoramento de estações meteorológicas DIY (Wemos D1 mini/ESP826
   - Monitor: alerta `collector_down` pelo heartbeat do coletor, expiração de comandos e limpeza de sessões.
 - **`@wx/db`:** `openAlert`/`resolveAlerts` e `writeEventLog` agora são compartilhados pelos dois apps; migração `0002` (`sessions.remember`).
 - **Validação:** 23 testes de integração da API, contra Postgres e Mosquitto reais. No total: 135 unitários e 54 de integração.
+
+### 2026-10-23 — Fase 4: Web do Dashboard (App 2)
+- **Base** (`apps/dashboard/src/web`): React 19, Vite 8, React Router 8 (rotas com `lazy`, uma página por chunk), TanStack Query 5, Tailwind 4 e primitivas Radix (sem shadcn).
+  - Guards de sessão, troca obrigatória da senha provisória e telas de admin protegidas (operador vê "acesso restrito"; a API também recusa).
+  - 401 global limpa a sessão; SSE invalida as consultas por prefixo (leituras a cada 2 s no máximo).
+- **Identidade "painel de instrumentos ao anoitecer":**
+  - Moldura ardósia monocromática; cor só para dados e status.
+  - Archivo em três larguras; tokens nos temas escuro (padrão) e claro.
+  - Paleta por grandeza validada com o `validate_palette.js` (§8.8 do design).
+- **Telas:**
+  - Visão geral: mapa MapLibre inclinado com colunas extrudadas por estação e rótulos diretos; alertas, sistema e o "rack" de instrumentos.
+  - Estação:
+    - Cena 3D em React Three Fiber: anemômetro na velocidade medida (pela calibração), chuva quando o pluviômetro conta, céu e sombras pela posição do sol no local, LED na cor do status.
+    - Valores ao vivo, sensores e gráficos ECharts com visão em tabela, filtro de período na URL e CSV.
+    - Mapa de calor hora × dia (plano ou 3D), calendário de chuva de 12 meses e resumo diário com CSV.
+  - Comparar, Dispositivos (bateria com limiares, sinal, linha do tempo de conexão), Alertas, Logs (filtros na URL, detalhe JSON) e Meu perfil.
+  - Administração:
+    - Estações: mapa para marcar o local, altitude pelo Open-Meteo, calculadora do anemômetro, configuração remota com revisão, credenciais exibidas uma vez, comandos, desativar/excluir com confirmação pelo código.
+    - Usuários e configurações.
+- **Testes:**
+  - 22 testes unitários novos (cores das séries, quebras de série, período, posição do sol, céu, formatação).
+  - 10 testes Playwright: login, redirecionamento, navegação, admin cadastra e exclui estação, operador troca a senha e não acessa a administração.
+- **Validação de ponta a ponta com o simulador** (coletor, API, Vite e 3 estações a cada 10 s):
+  - Screenshots de todas as telas no tema escuro; visão geral e estação também no tema claro e no celular (390 px).
+  - Build de produção servido pela API com o CSP real: mapa, workers e 3D sem violações.
+  - Tempo real conferido: cada leitura dispara um refetch via SSE.
+- **Correções encontradas no teste:** altura zero do mapa (CSS do MapLibre), rótulos 3D perdidos (drei `<Html>`), estação esparsa invisível na comparação, rótulos repetidos no eixo da bateria e corrida no redirecionamento depois da troca de senha.
+- **No total:** 157 testes unitários, 54 de integração (não reexecutados nesta fase, que não alterou servidor, coletor nem pacotes) e 10 E2E.

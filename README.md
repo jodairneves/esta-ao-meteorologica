@@ -8,7 +8,7 @@ Sistema de monitoramento de estações meteorológicas DIY baseadas no **Wemos D
 
 O design completo está em [`docs/superpowers/specs/2026-10-22-estacao-meteorologica-design.md`](docs/superpowers/specs/2026-10-22-estacao-meteorologica-design.md) e o plano por fases em [`docs/superpowers/plans/2026-10-22-plano-de-implementacao.md`](docs/superpowers/plans/2026-10-22-plano-de-implementacao.md).
 
-> **Status:** Fases 1 e 2 concluídas — contrato MQTT, banco de dados, administração do broker, **coletor (App 1)** e **simulador de estações**. Dashboard, firmware e deploy vêm nas próximas fases.
+> **Status:** Fases 1 a 4 concluídas — contrato MQTT, banco de dados, administração do broker, **coletor (App 1)**, **simulador de estações** e **dashboard (App 2)**, com API e interface web. Firmware e deploy vêm nas próximas fases.
 
 ## Pré-requisitos
 
@@ -25,13 +25,15 @@ pnpm db:migrate          # cria o esquema do banco
 pnpm mqtt:bootstrap      # cria papéis e o cliente do coletor no Mosquitto
 ```
 
-### Ver dados fluindo sem hardware
+### Ver o sistema funcionando sem hardware
 
 ```bash
 pnpm db:seed                         # 3 estações de demonstração (banco + credenciais MQTT)
-pnpm dev:collector                   # App 1: MQTT → PostgreSQL (deixe rodando)
+pnpm dev                             # coletor + API do dashboard + interface (deixe rodando)
 pnpm simulate --backfill 7d          # em outro terminal: 7 dias de histórico + tempo real
 ```
+
+Abra <http://localhost:5173> e entre com `ADMIN_EMAIL` / `ADMIN_PASSWORD` do `.env`. O primeiro administrador é criado automaticamente quando a API sobe.
 
 Opções do simulador: `--interval 10` (leituras mais frequentes), `--chaos` (falhas de sensor, quedas de Wi-Fi, falta de energia, duplicatas e payloads inválidos), `--chaos-rate 5` e `--only sede,pivo-norte`. As estações de demonstração cobrem os três perfis de energia: `sede` (solar folgado), `pivo-norte` (solar justo) e `talhao-sul` (bateria fraca, entra em economia e sobrevivência).
 
@@ -47,7 +49,10 @@ Opções do simulador: `--interval 10` (leituras mais frequentes), `--chaos` (fa
 | `pnpm db:generate --name <nome>` | Gera uma nova migração a partir do esquema (`packages/db/src/schema`) |
 | `pnpm mqtt:bootstrap` | Configura o broker (idempotente) |
 | `pnpm db:seed` | Cria/atualiza as estações de demonstração e as credenciais do simulador |
-| `pnpm dev:collector` | Coletor (App 1) com recarga automática |
+| `pnpm dev` | Coletor, API do dashboard (porta 3300) e interface (Vite, porta 5173) |
+| `pnpm dev:collector` / `pnpm dev:dashboard` | Só o coletor, ou só a API e a interface |
+| `pnpm --filter @wx/dashboard build` | Gera a interface em `apps/dashboard/dist/web` (servida pela API com `WEB_DIST`) |
+| `pnpm --filter @wx/dashboard e2e` | Testes de ponta a ponta (Playwright) contra o sistema rodando |
 | `pnpm simulate` | Estações virtuais (ver opções acima; `--help`) |
 
 ## Estrutura
@@ -55,6 +60,7 @@ Opções do simulador: `--interval 10` (leituras mais frequentes), `--chaos` (fa
 ```
 apps/
   collector/     # App 1: MQTT → PostgreSQL, status, saúde, alertas e logs
+  dashboard/     # App 2: API Fastify (src/server) e interface React (src/web)
 packages/
   shared/        # contrato MQTT (zod), domínio e fórmulas meteorológicas (Node e navegador)
   db/            # esquema Drizzle, migrações, LISTEN/NOTIFY
@@ -64,6 +70,19 @@ tools/
 infra/           # compose de desenvolvimento e configuração do Mosquitto
 docs/            # design, plano e guias
 ```
+
+## Dashboard
+
+| Tela | O que mostra |
+|---|---|
+| Visão geral | Mapa inclinado em 3D com uma coluna por estação (temperatura, chuva de hoje, vento ou umidade), alertas ativos, saúde do sistema e uma linha de instrumentos por estação |
+| Estação | Cena 3D da estação (anemômetro girando com o vento medido, chuva caindo quando o pluviômetro conta, céu da hora local), valores ao vivo, gráficos por período, mapa de calor hora × dia (plano ou 3D), calendário de chuva, resumo diário e CSV |
+| Comparar | A mesma grandeza de até 6 estações no mesmo gráfico |
+| Dispositivos | Bateria, sinal, firmware, memória e fila de cada D1 mini; histórico e linha do tempo de conexão |
+| Alertas e Logs | Alertas ativos e resolvidos com reconhecimento; registros filtráveis, atualizados ao vivo |
+| Administração | Estações (local no mapa, calibração, configuração remota, credenciais MQTT, comandos), usuários e configurações |
+
+Os dados chegam ao vivo pelo SSE. Todo gráfico tem uma visão em tabela. A interface é responsiva, respeita "reduzir movimento" e tem tema escuro (padrão) e claro.
 
 ## Contrato MQTT (resumo)
 
