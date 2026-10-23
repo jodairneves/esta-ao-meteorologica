@@ -109,7 +109,11 @@ export function ChartPanel({
               </thead>
               <tbody>
                 {view.rows.slice(0, TABLE_ROW_LIMIT).map((row, index) => (
-                  <tr key={String(row[0] ?? index)} className="border-t border-hairline">
+                  <tr
+                    // biome-ignore lint/suspicious/noArrayIndexKey: rows are positional; two readings can share the same minute label
+                    key={index}
+                    className="border-t border-hairline"
+                  >
                     {row.map((cell, cellIndex) => (
                       <td
                         // biome-ignore lint/suspicious/noArrayIndexKey: columns are positional
