@@ -262,7 +262,7 @@ Comando vencido (`exp` < agora) é recusado com `CMD_ACK` `ok=false`, `detail="e
 |---|---|---|---|
 | Estação | `st-{code}` | persistente (clean = false) | Keepalive 60 s; publica com QoS 1; assina `config` e `cmd` (QoS 1) a cada conexão, o que reentrega a configuração retida |
 | Coletor | `collector` | persistente | Assina `telemetry`, `status`, `health` e `event` com QoS 1; envia PUBACK só depois do commit |
-| Dashboard | `dashboard` | limpa | Publica `config` (retido) e `cmd`; administra o Dynamic Security |
+| Dashboard | `wx-dashboard-<host>-<sufixo>` | limpa | Publica `config` (retido) e `cmd`; administra o Dynamic Security. Client id único por instância, para duas instâncias (ex.: dev e testes) não se derrubarem |
 
 Broker com `persistence true` e fila por cliente ampliada (`max_queued_messages` alto) para segurar as mensagens enquanto o coletor estiver parado.
 

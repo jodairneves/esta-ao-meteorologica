@@ -68,13 +68,19 @@ Sistema de monitoramento de estações meteorológicas DIY (Wemos D1 mini/ESP826
 - **Classificação de falhas no coletor:** não há lista de códigos de erro do Postgres. Se o handler falha e `select 1` também, é queda do banco (pausa); se o banco responde, tenta de novo uma vez e depois descarta com log `PROCESSING_FAILED`.
 - **Status retido:** ao (re)assinar, o broker reenvia os `status` retidos; o coletor só os aplica para estação com estado desconhecido e nunca os conta como contato.
 - **`tsx`, `typescript` e `vitest` ficam na raiz** do monorepo (`node_modules/.bin` da raiz).
+- **Drizzle — consultas cruas (`db.execute(sql…)`):** `timestamptz` volta como **texto** (o driver do drizzle desliga o parser do `pg`). Use `toDate`/`toIso` (`apps/dashboard/src/server/services/sql-values.ts`) ou devolva epoch ms no SQL: `(extract(epoch from x) * 1000)::float8`. Consultas tipadas (`db.select()`) já devolvem `Date`.
+- **Drizzle — arrays no template `sql`:** `${[a, b]}` vira `($1, $2)`. Use `col in ${ids}`; `= any(${ids})` gera SQL inválido.
+- **Fastify 5.12:** `disableRequestLogging` está obsoleto; use `logController: new LogController({ disableRequestLogging: true })`.
+- **Escrita de arquivos por ferramenta:** escapes `\uXXXX` dentro do conteúdo viram o caractere literal (invisível no caso de BOM e acentos combinantes). Use `String.fromCharCode(0xfeff)` ou classes como `\p{M}`.
+- **Dashboard em dev:** servidor na porta 3300; `APP_URL=http://localhost:5173` (Vite) é a origem aceita pelo CSRF.
 - **Simulador:** `--interval` só acelera as leituras; o monitor usa o intervalo configurado no banco (60 s). Intervalo maior que o configurado gera alerta de estação sem contato. O `--backfill` consulta a última leitura de cada estação no banco para não duplicar histórico.
 
 ## Estado atual
 
 - **Fase 1 — Fundação:** concluída (2026-10-22).
 - **Fase 2 — Coletor + simulador:** concluída (2026-10-23).
-- **Próxima:** Fase 3 — App 2 (API do Dashboard). O primeiro admin (`ADMIN_EMAIL`/`ADMIN_PASSWORD`) ainda não existe: o hash de senha (argon2id) entra com a API.
+- **Em andamento (pedido do usuário em 2026-10-23):** Fase 3 (API do Dashboard) e Fase 4 (Web), seguidas sem checkpoint intermediário, até o teste do dashboard de ponta a ponta com os dados fictícios do simulador. Depois disso: checkpoint antes das Fases 5 (firmware) e 6 (deploy).
+- O primeiro admin (`ADMIN_EMAIL`/`ADMIN_PASSWORD`) é criado pela API na Fase 3 (hash argon2id).
 - **Hardware do usuário:** D1 mini, BME280, anemômetro e pluviômetro impressos em 3D (modelos MakerWorld), bateria de lítio e talvez um painel solar pequeno.
 - **Produção:** VPS com Coolify **ou** servidor local com Cloudflare Tunnel (painel) e port forward (MQTT 8883).
 
@@ -138,3 +144,18 @@ Sistema de monitoramento de estações meteorológicas DIY (Wemos D1 mini/ESP826
   - 14 cenários do coletor contra serviços reais, inclusive queda do banco no meio da coleta, sem perda.
   - Ponta a ponta: 26,4 mil leituras de 7 dias gravadas, com derivados coerentes (pressão ao nível do mar ≈ 1013 hPa). O caos exercitou LWT, falta de energia (novo `run`), envio do buffer depois da reconexão, duplicatas descartadas e payload inválido registrado.
 - **Pendente para a Fase 3:** criar o primeiro admin (precisa do argon2id da API).
+
+### 2026-10-23 — Fase 3: API do Dashboard (App 2)
+- **`apps/dashboard/src/server`** (Fastify 5):
+  - Autenticação com argon2id (parâmetros OWASP) e sessão com token só no cookie (`HttpOnly`, `SameSite=Strict`) e SHA-256 no banco. Expiração deslizante (12 h; 30 dias com "manter conectado").
+  - Proteções do login: limite de 5 tentativas por minuto por IP+e-mail, bloqueio de 15 min após 10 falhas, tempo constante para e-mail inexistente.
+  - Senha provisória com troca obrigatória no primeiro acesso.
+  - CSRF com cabeçalho `x-wx-request: 1` e conferência do `Origin`.
+  - Perfis por rota (`config.auth`: public, user, admin). Regras: o admin não remove o próprio acesso e o sistema nunca fica sem admin ativo.
+  - Estações: cadastro atômico (banco + credencial MQTT + config retida), edição, desativação (derruba a conexão no broker), exclusão confirmada pelo código, rotação de senha, configuração remota com revisão e comandos com validade.
+  - Dados: últimos valores com derivados (sensação térmica, Beaufort, tendência de 3 h, taxa de chuva) e totais de chuva no fuso da estação; séries com bucket automático; resumo diário; mapa de calor; comparação; CSV no padrão do Excel pt-BR.
+  - Operação: dispositivos, histórico de saúde e de conexão, alertas com reconhecimento, logs com filtros e busca, status do sistema (coletor, broker via `$SYS`, banco) e configurações validadas.
+  - SSE em `/api/v1/stream`, alimentado por `LISTEN/NOTIFY`. Leituras agregadas por estação a cada 1 s (aguenta o backfill); a sessão é revalidada a cada ~100 s.
+  - Monitor: alerta `collector_down` pelo heartbeat do coletor, expiração de comandos e limpeza de sessões.
+- **`@wx/db`:** `openAlert`/`resolveAlerts` e `writeEventLog` agora são compartilhados pelos dois apps; migração `0002` (`sessions.remember`).
+- **Validação:** 23 testes de integração da API, contra Postgres e Mosquitto reais. No total: 135 unitários e 54 de integração.
