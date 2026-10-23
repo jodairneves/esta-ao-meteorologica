@@ -796,7 +796,7 @@ Imagens dos apps: build em múltiplos estágios, usuário não-root e healthchec
 | Variável | Uso |
 |---|---|
 | `POSTGRES_PASSWORD`, `DATABASE_URL` | Banco |
-| `MOSQUITTO_DYNSEC_PASSWORD` | Senha do cliente `admin` do Mosquitto (usada pelo Dashboard) |
+| `MOSQUITTO_DYNSEC_PASSWORD` | Senha do cliente `admin` do Mosquitto (usada pelo Dashboard); mínimo de 12 caracteres, exigência do Mosquitto 2.1 |
 | `MQTT_COLLECTOR_PASSWORD` | Senha do cliente `collector` |
 | `ADMIN_EMAIL`, `ADMIN_PASSWORD` | Primeiro admin (só usado se não houver usuários) |
 | `APP_URL` | URL pública do painel (cookies e conferência de `Origin`) |

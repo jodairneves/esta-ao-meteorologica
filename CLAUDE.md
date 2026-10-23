@@ -39,11 +39,33 @@ Sistema de monitoramento de estações meteorológicas DIY (Wemos D1 mini/ESP826
 
 ## Comandos
 
-Ainda não implementados — são criados na Fase 1 (ver §9.7 do design). Esta seção será atualizada com os comandos reais.
+| Comando | O que faz |
+|---|---|
+| `cp .env.example .env` | Primeiro passo; valores de desenvolvimento |
+| `pnpm infra:up` / `infra:down` / `infra:logs` | Postgres (`127.0.0.1:5442`) e Mosquitto (`127.0.0.1:1883`) de dev |
+| `pnpm db:migrate` | Aplica migrações + configurações padrão (`DATABASE_URL`) |
+| `pnpm --filter @wx/db exec drizzle-kit generate --name <nome>` | Gera migração nova a partir de `packages/db/src/schema` |
+| `pnpm mqtt:bootstrap` | Configura papéis/ACLs e o cliente `collector` no broker (idempotente) |
+| `pnpm check` | Biome + typecheck (todos os pacotes) + testes unitários |
+| `pnpm test:int` | Testes de integração (exigem `pnpm infra:up`; usam o banco `weather_test`) |
+| `pnpm format` | Formata e organiza imports |
+
+## Notas técnicas (armadilhas já encontradas)
+
+- **Portas ocupadas na máquina de dev:** 5432 (Postgres local) e 3000. Por isso o Postgres de dev usa 5442; o servidor do dashboard precisará de outra porta em dev.
+- **Mosquitto 2.1:** `per_listener_settings` está obsoleto (não usar); `MOSQUITTO_DYNSEC_PASSWORD` precisa de **≥ 12 caracteres**, senão a config inicial do Dynamic Security não é gerada. O `admin` gerado já vem com os papéis `super-admin`, `sys-observe` e `topic-observe`.
+- **Dynamic Security:** `addClientRole` repetido responde só "Internal error" — por isso `mqtt-admin` sempre consulta (`getClient`/`getRole`) antes de alterar. Desativar ou excluir um cliente derruba a conexão dele na hora.
+- **mqtt.js 5:** `subscribeAsync` rejeita a chamada inteira se qualquer filtro for negado (SUBACK 0x80).
+- **pnpm 11:** dependências com script de build precisam de `allowBuilds` em `pnpm-workspace.yaml`; `pnpm <script> -- --flag` repassa o `--` literalmente (use `pnpm --filter <pkg> exec ...`).
+- **Postgres 18 (imagem Docker):** o volume vai em `/var/lib/postgresql` (não em `/data`). `uuidv7()` é nativo.
+- **`packages/shared`** roda no Node e no navegador: `lib` = `es2024` + `webworker` (sem DOM e sem tipos do Node).
+- **Pacotes internos** são consumidos como código-fonte TS (`exports` → `src/index.ts`); apps usam tsx em dev e bundle em produção. Bundles precisam passar `migrationsFolder` explicitamente para `prepareDatabase()`.
+- **Testes de integração do MQTT** usam um cliente próprio com o papel `collector`, nunca o client id `collector` (para não apagar a sessão persistente do coletor real).
 
 ## Estado atual
 
-- **Fase atual:** 1 — Fundação (não iniciada).
+- **Fase 1 — Fundação:** concluída (2026-10-22).
+- **Próxima:** Fase 2 — App 1 (Coletor) + simulador de estações.
 - **Hardware do usuário:** D1 mini, BME280, anemômetro e pluviômetro impressos em 3D (modelos MakerWorld), bateria de lítio e talvez um painel solar pequeno.
 - **Produção:** VPS com Coolify **ou** servidor local com Cloudflare Tunnel (painel) e port forward (MQTT 8883).
 
@@ -59,3 +81,28 @@ Ainda não implementados — são criados na Fase 1 (ver §9.7 do design). Esta 
   - Arquitetura com o banco como ponto de integração.
 - Design aprovado e documentado; plano de implementação em 7 fases.
 - Repositório git inicializado (os PDFs de referência ficam fora do versionamento).
+
+### 2026-10-22 — Fase 1: Fundação
+- **Monorepo:** pnpm 11, TypeScript 7 (estrito), Biome 2.6, Vitest 5 com os projetos `unit` e `integration`.
+- **Infra de dev** (`infra/compose.dev.yml`):
+  - Postgres 18.6 (porta 5442), com o banco `weather_test` criado automaticamente.
+  - Mosquitto 2.1.2 com Dynamic Security, porta 1883 só em localhost.
+- **`@wx/shared`:**
+  - Contrato MQTT v1 em zod (telemetry, status, health, event, config, cmd).
+  - Faixas físicas de validação e códigos de evento.
+  - Domínio, padrões (configuração do dispositivo, calibração, settings) e cálculo da chuva por diferença.
+  - Fórmulas: ponto de orvalho, pressão ao nível do mar, altitude, índice de calor, wind chill, sensação térmica, tendência da pressão, Beaufort e % de bateria.
+  - 106 testes unitários.
+- **`@wx/db`:**
+  - Esquema Drizzle com as 12 tabelas da §5.2 (CHECKs gerados dos enums do `shared`; alertas com índices únicos parciais).
+  - Migração `0000_initial_schema`.
+  - `prepareDatabase()` com advisory lock.
+  - `LISTEN/NOTIFY` tipado (`notifyStatement` dentro de transações, `startListener` com reconexão) e `getSettings()`.
+- **`@wx/mqtt-admin`:**
+  - Cliente da API do Dynamic Security.
+  - Papéis `station`, `collector` e `dashboard-ops` sincronizados por diferença de ACLs.
+  - Provisionamento, rotação, desativação e remoção de estações (com limpeza dos retidos).
+  - CLI `pnpm mqtt:bootstrap`.
+- **Testes de integração** (17, contra serviços reais):
+  - Banco: migração do zero, concorrência, constraints, UUIDv7, NOTIFY só após commit.
+  - Broker: isolamento entre estações, client id obrigatório, troca de senha, desativação derrubando a conexão, remoção limpando os retidos.
