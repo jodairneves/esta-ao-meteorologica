@@ -1,0 +1,188 @@
+@import "tailwindcss";
+@import "@fontsource-variable/archivo/wdth.css";
+
+/*
+ * "Field instrument panel at dusk": monochrome slate chrome; colour is reserved for data
+ * (one fixed hue per quantity) and for status (always with icon + text).
+ * Data hues are the dataviz reference steps, validated against these exact surfaces
+ * (dark #15232d, light #fbfcfc) with validate_palette.js.
+ */
+
+:root,
+[data-theme="dark"] {
+  color-scheme: dark;
+  --canvas: #0f1a22;
+  --panel: #15232d;
+  --raised: #1c2d39;
+  --sunken: #0c161d;
+  --hairline: #263845;
+  --hairline-strong: #354a58;
+  --ink: #eaf0f3;
+  --ink-2: #a9b7c0;
+  --ink-3: #7c8b95;
+  --grid: #213240;
+  --axis: #3a4e5c;
+
+  /* Quantities (identity): fixed across every chart and screen. */
+  --q-rain: #3987e5;
+  --q-temp: #d95926;
+  --q-dew: #199e70;
+  --q-hum: #9085e9;
+  --q-pres: #d55181;
+  --q-wind: #008300;
+
+  /* Categorical order for charts whose series are stations (fixed slots, never cycled). */
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --series-3: #199e70;
+  --series-4: #c98500;
+  --series-5: #d55181;
+  --series-6: #008300;
+
+  /* Sequential ramps, low → high. Dark mode anchors "low" on the dark end. */
+  --ramp-temp: #754432, #9c4b2d, #c25429, #e26330, #fc7846, #fe9e7b, #ffc0aa, #ffe0d5;
+  --ramp-rain:
+    #0d366b, #104281, #184f95, #1c5cab, #256abf, #2a78d6, #3987e5, #5598e7, #6da7ec, #86b6ef;
+
+  /* Status: reserved meaning, never a series colour. */
+  --good: #0ca30c;
+  --warning: #fab219;
+  --serious: #ec835a;
+  --critical: #d03b3b;
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+  --canvas: #eef2f4;
+  --panel: #fbfcfc;
+  --raised: #ffffff;
+  --sunken: #f4f7f8;
+  --hairline: #d8e0e5;
+  --hairline-strong: #c2ced5;
+  --ink: #13202a;
+  --ink-2: #445561;
+  --ink-3: #6c7b86;
+  --grid: #e6ecef;
+  --axis: #c2ced5;
+
+  --q-rain: #2a78d6;
+  --q-temp: #eb6834;
+  --q-dew: #1baf7a;
+  --q-hum: #6250d6;
+  --q-pres: #e87ba4;
+  --q-wind: #008300;
+
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --series-3: #1baf7a;
+  --series-4: #eda100;
+  --series-5: #e87ba4;
+  --series-6: #008300;
+
+  --ramp-temp: #ffe0d5, #ffc0aa, #fe9e7b, #fc7846, #e26330, #c25429, #9c4b2d, #754432;
+  --ramp-rain:
+    #cde2fb, #b7d3f6, #9ec5f4, #86b6ef, #6da7ec, #5598e7, #3987e5, #2a78d6, #256abf, #1c5cab;
+}
+
+@theme inline {
+  --font-sans: "Archivo Variable", ui-sans-serif, system-ui, sans-serif;
+
+  --color-canvas: var(--canvas);
+  --color-panel: var(--panel);
+  --color-raised: var(--raised);
+  --color-sunken: var(--sunken);
+  --color-hairline: var(--hairline);
+  --color-hairline-strong: var(--hairline-strong);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+
+  --color-q-rain: var(--q-rain);
+  --color-q-temp: var(--q-temp);
+  --color-q-dew: var(--q-dew);
+  --color-q-hum: var(--q-hum);
+  --color-q-pres: var(--q-pres);
+  --color-q-wind: var(--q-wind);
+
+  --color-good: var(--good);
+  --color-warning: var(--warning);
+  --color-serious: var(--serious);
+  --color-critical: var(--critical);
+}
+
+@layer base {
+  html {
+    background: var(--canvas);
+    color: var(--ink);
+    font-family: var(--font-sans);
+    font-size: 15px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    min-height: 100dvh;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--ink);
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background: color-mix(in oklab, var(--q-rain) 40%, transparent);
+  }
+
+  /* Tables and axis-like columns align their digits; big readouts keep proportional ones. */
+  table {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@layer components {
+  .panel {
+    border: 1px solid var(--hairline);
+    background: var(--panel);
+    border-radius: 10px;
+  }
+
+  /* Structural headings use the expanded width of the family: engraved-panel labels. */
+  .heading {
+    font-stretch: 118%;
+    font-weight: 560;
+    letter-spacing: -0.005em;
+  }
+
+  .readout {
+    font-stretch: 108%;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    line-height: 1;
+  }
+
+  .dense {
+    font-stretch: 88%;
+  }
+}
+
+/* biome-ignore-start lint/complexity/noImportantStyles: the reduced-motion request must beat every component style */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+/* biome-ignore-end lint/complexity/noImportantStyles: see above */
+
+@keyframes wx-progress {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(300%);
+  }
+}

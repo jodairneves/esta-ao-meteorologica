@@ -1,0 +1,42 @@
+/* MapLibre controls in the interface's colours (its stylesheet assumes a white map). */
+.maplibregl-map .maplibregl-ctrl-group {
+  background: var(--raised);
+  border: 1px solid var(--hairline);
+  box-shadow: none;
+}
+
+.maplibregl-map .maplibregl-ctrl-group button + button {
+  border-top-color: var(--hairline);
+}
+
+.maplibregl-map .maplibregl-ctrl-group button:not(:disabled):hover {
+  background-color: var(--panel);
+}
+
+[data-theme="dark"] .maplibregl-map .maplibregl-ctrl-icon {
+  filter: invert(0.85);
+}
+
+.maplibregl-map .maplibregl-ctrl-attrib,
+.maplibregl-map .maplibregl-ctrl-attrib.maplibregl-compact {
+  background: color-mix(in oklab, var(--panel) 85%, transparent);
+  color: var(--ink-3);
+}
+
+.maplibregl-map .maplibregl-ctrl-attrib a {
+  color: var(--ink-2);
+}
+
+.maplibregl-map .maplibregl-ctrl-attrib-button {
+  background-color: transparent;
+}
+
+[data-theme="dark"] .maplibregl-map .maplibregl-ctrl-attrib-button {
+  filter: invert(0.85);
+}
+
+.maplibregl-map .maplibregl-cooperative-gesture-screen {
+  background: color-mix(in oklab, var(--canvas) 70%, transparent);
+  color: var(--ink);
+  font-size: 15px;
+}
