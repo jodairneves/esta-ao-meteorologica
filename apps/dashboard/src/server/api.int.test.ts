@@ -653,6 +653,12 @@ describe('dashboard API', () => {
       expect(status.database.sizeBytes).toBeGreaterThan(0);
     });
 
+    it('answers the health check without a session', async () => {
+      const response = await app.inject({ method: 'GET', url: '/healthz' });
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual({ ok: true, broker: true });
+    });
+
     it('validates and stores the settings', async () => {
       const current = (await admin.get('/settings')).json();
       const invalid = await admin.put('/settings', {

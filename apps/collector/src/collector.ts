@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { writeFile } from 'node:fs/promises';
 import {
   CHANNELS,
   createDb,
@@ -165,13 +166,19 @@ export function createCollector(config: CollectorConfig, logger: Logger): Collec
     logger,
   });
 
+  // The health file is touched only after the heartbeat reaches the database: a container whose
+  // database is gone stops looking healthy.
   const heartbeat = () =>
     writeHeartbeat(db, {
       instanceId,
       version: VERSION,
       startedAt: stats.startedAt,
       stats: stats.toJSON(),
-    }).catch((error) => logger.warn({ err: error }, 'heartbeat failed'));
+    })
+      .then(() =>
+        config.healthFile ? writeFile(config.healthFile, new Date().toISOString()) : undefined,
+      )
+      .catch((error) => logger.warn({ err: error }, 'heartbeat failed'));
 
   const runMonitorOnce = (now?: Date) => runMonitorTick({ db, logger, monitoringSettings }, now);
 
