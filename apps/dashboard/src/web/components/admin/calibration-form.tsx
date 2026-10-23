@@ -42,8 +42,9 @@ type CalibrationKey = (typeof FIELDS)[number]['key'];
  * cups, and the reed switch closes `pulses` times per turn.
  */
 function AnemometerCalculator({ onUse }: { onUse: (value: number) => void }) {
-  const [radius, setRadius] = useState('70');
-  const [pulses, setPulses] = useState('2');
+  // Starts from the reference anemometer (MakerWorld): 80 mm radius, 3 magnets.
+  const [radius, setRadius] = useState('80');
+  const [pulses, setPulses] = useState('3');
   const [factor, setFactor] = useState('2,5');
   const r = parseDecimal(radius);
   const p = parseDecimal(pulses);
