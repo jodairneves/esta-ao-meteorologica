@@ -8,6 +8,7 @@ Sistema de monitoramento de estações meteorológicas DIY (Wemos D1 mini/ESP826
 - **Plano por fases:** `docs/superpowers/plans/2026-10-22-plano-de-implementacao.md`
 - **Referências de hardware:** o que foi aproveitado dos PDFs de terceiros está resumido na §1.4 do design. Os PDFs nunca foram versionados e o usuário os removeu do projeto em 2026-10-23.
 - **Manual de ligação dos sensores:** `docs/manual-de-ligacao.pdf` (gerado por `pnpm docs:manual`).
+- **Deploy:** `docs/deploy.md` (Coolify na VPS e em casa, backup e restauração, ensaio local).
 
 ## Visão geral
 
@@ -16,6 +17,7 @@ Sistema de monitoramento de estações meteorológicas DIY (Wemos D1 mini/ESP826
 - **Pacotes:** `packages/shared` (contrato MQTT em zod, domínio, fórmulas meteorológicas; roda no Node e no navegador), `packages/db` (esquema Drizzle, migrações, NOTIFY), `packages/mqtt-admin` (Dynamic Security do Mosquitto).
 - **Firmware** (`firmware/`): PlatformIO para D1 mini, com perfis de energia Normal/Economia/Sobrevivência. Guias em `docs/hardware.md` e `docs/calibracao.md`.
 - **Contrato MQTT v1:** `weather/v1/{code}/{telemetry|status|health|event|config|cmd}` (§3 do design).
+- **Produção:** `docker-compose.yaml` na raiz (Coolify), `Dockerfile` com os alvos `collector` e `dashboard`, `infra/mosquitto` e `infra/backup`; variáveis em `.env.production.example`.
 
 ## Decisões que não devem ser revertidas sem conversar com o usuário
 
@@ -28,7 +30,8 @@ Sistema de monitoramento de estações meteorológicas DIY (Wemos D1 mini/ESP826
 - Perfis: `admin` (tudo) e `operator` (somente leitura, mais reconhecer alertas e exportar CSV).
 - Duas versões de estação: **completa** (BME280) e **HTU21D** (sem pressão nem altitude). A versão é definida no cadastro (`stations.climate_sensor`); um único firmware detecta o sensor ligado. O contrato MQTT continua na v1 (`pres: null` e `health.sensors.htu21d`).
 - O mapa usa o OpenFreeMap (gratuito, sem chave e sem garantia de funcionamento) e a altitude do cadastro usa o Open-Meteo (plano grátis só para uso não comercial). O usuário confirmou que o uso **não é comercial** (2026-10-23).
-- O MQTT exposto na internet usa sempre TLS (8883), com credencial própria por estação.
+- O MQTT exposto na internet fica na **1883 sem TLS** (decisão do usuário em 2026-10-23; risco registrado no design §3.10), com credencial própria por estação. O MQTT via WebSocket também foi recusado. O firmware continua pronto para TLS na 8883, mas só ligar se o usuário pedir.
+- Produção: o compose traz o Mosquitto do projeto (o broker que o usuário já tem não é usado).
 - A estação serve uma página de configuração na rede local (servidor MQTT e Wi-Fi), pedido do usuário em 2026-10-23. A senha dela é gerada pelo painel, fica legível em `stations.local_password` (só admins, com auditoria) e vai para a estação na configuração retida.
 
 ## Convenções
@@ -64,6 +67,8 @@ Sistema de monitoramento de estações meteorológicas DIY (Wemos D1 mini/ESP826
 | `pnpm docs:manual` | Gera `docs/manual-de-ligacao.pdf` (manual de ligação dos sensores) a partir de `docs/manual-de-ligacao/gerar.mjs`, com o Chromium do Playwright |
 | `firmware/scripts/serial-log.py [--seconds N] [--portal]` | Log serial do D1 mini sem terminal interativo (bom para rodar em segundo plano); `--portal` abre o portal com reset duplo pelo USB |
 | `DEV_MQTT_BIND=0.0.0.0` no `.env` + `pnpm infra:up` | Expõe o Mosquitto de dev na rede local, só durante o teste em bancada |
+| `node scripts/bundle-server.mjs <collector\|dashboard>` | Bundle ESM do servidor, com um `package.json` das dependências que ficam fora (o `Dockerfile` usa) |
+| `docker compose -p wx-rehearsal --env-file .env.rehearsal -f docker-compose.yaml -f infra/compose.rehearsal.yml up -d --build --wait` | Ensaio local da produção: painel em `localhost:3400` e, com `MQTT_HOST_PORT=127.0.0.1:1884`, broker em `127.0.0.1:1884`; `down -v` apaga tudo (`docs/deploy.md`, seção 7) |
 
 ## Notas técnicas (armadilhas já encontradas)
 
@@ -126,6 +131,24 @@ Sistema de monitoramento de estações meteorológicas DIY (Wemos D1 mini/ESP826
   - O menu padrão inclui "Update" (envio de firmware pelo navegador), e o `setShowInfoUpdate(false)` não o esconde. Por isso o menu é só `wifi`, e o `setPreOtaUpdateCallback` reinicia a placa se alguém tentar enviar firmware pela rota `/update`, que continua registrada.
   - Os templates não têm lugar para um título acima da lista de redes; o título entra por JS no `HTTP_SCRIPT`.
   - O portal cativo já vem da biblioteca: o DHCP do AP entrega a placa como DNS, o DNS responde 192.168.4.1 para tudo e as rotas desconhecidas recebem 302. A raiz `/` redireciona direto para `/wifi`, por uma rota registrada no `setWebServerCallback` (ele roda antes das rotas da biblioteca, e no `ESP8266WebServer` vence a primeira rota registrada).
+- **mqtt.js 5 e login recusado:** depois de um CONNACK com erro (ex.: "Not authorized"), o mqtt.js para de reconectar. O coletor e o painel usam `reconnectOnConnackError: true`, porque num deploy novo o coletor sobe antes de o painel criar o login dele.
+- **Dynamic Security derruba conexões:**
+  - quando os papéis de um cliente mudam: no primeiro start o `admin` ganha `dashboard-ops`, e o painel cai uma vez (aviso `broker closed the connection during the bootstrap`) e reconecta;
+  - quando a senha é regravada: o painel regrava a do `collector` a cada start, e o coletor reconecta.
+- **Bundle dos servidores (esbuild, ESM, `scripts/bundle-server.mjs`):**
+  - O banner cria `require` com `createRequire`, porque o código CommonJS chama `require` para os módulos do Node.
+  - `__dirname` só aparece nos transportes do pino, que a produção não usa.
+  - O argon2 (nativo) fica fora do bundle; o `package.json` gerado ao lado o instala na versão do lockfile.
+  - `--disable-warning=DEP0169` cala o aviso do `url.parse()` que o mqtt.js usa.
+- **Coolify:**
+  - O domínio do serviço leva a porta (`https://estacao…:3000`).
+  - `${VAR:?}` bloqueia o deploy até a variável ser preenchida.
+  - `ports:` publica direto no host; só o MQTT usa.
+  - As configurações vão dentro das imagens (sem bind mount).
+- **Produção — senhas:** `POSTGRES_PASSWORD` e `MOSQUITTO_DYNSEC_PASSWORD` só valem quando o volume é criado (mudar a variável depois tira o acesso dos apps). A do `collector` o painel reaplica a cada start.
+- **Backup (`infra/backup`):**
+  - O `dynamic-security.json` é 0600 do usuário `mosquitto`, por isso o container de backup roda como root.
+  - A restauração troca os bancos com `ALTER DATABASE … RENAME`, que falha com conexões abertas: é a trava contra restaurar com o coletor ou o painel ligados.
 - **Firmware — deep sleep na bancada:** sem o fio D0–RST a placa não acorda sozinha. O portal sem configuração dorme depois de 5 min; o botão RESET a traz de volta ao portal (o reset chega como "Deep-Sleep Wake").
 
 ## Estado atual
@@ -135,11 +158,13 @@ Sistema de monitoramento de estações meteorológicas DIY (Wemos D1 mini/ESP826
 - **Fase 3 — API do Dashboard:** concluída (2026-10-23).
 - **Fase 4 — Web:** concluída (2026-10-23), com o teste de ponta a ponta usando os dados fictícios do simulador.
 - **Fase 4.5 — Duas versões de estação (BME280 e HTU21D):** concluída (2026-10-23).
-- **Fase 5 — Firmware:** implementada (2026-10-23). Compila e passa nos testes nativos. Na bancada (2026-10-23), um D1 mini real ainda sem sensores, a estação `bancada`, configurado pelo portal, publica no ambiente de dev: online, leituras, diagnóstico e configuração remota aplicada. A página local também foi validada: troca de servidor mantida, senha gerada pelo painel aplicada, IP 10.25.50.111 no painel. Falta ligar os sensores (BME280 ou HTU21D, anemômetro, pluviômetro e o divisor da bateria) e medir a memória com TLS, que depende da Fase 6.
-- **Próximo:** Fase 6 (deploy), já aprovada. Falta o usuário dizer o domínio, onde está o DNS e se começa pela VPS/Coolify ou pelo servidor local.
+- **Fase 5 — Firmware:** implementada (2026-10-23). Compila e passa nos testes nativos. Na bancada (2026-10-23), um D1 mini real ainda sem sensores, a estação `bancada`, configurado pelo portal, publica no ambiente de dev: online, leituras, diagnóstico e configuração remota aplicada. A página local também foi validada: troca de servidor mantida, senha gerada pelo painel aplicada, IP 10.25.50.111 no painel. Falta ligar os sensores (BME280 ou HTU21D, anemômetro, pluviômetro e o divisor da bateria). A memória com TLS só precisa ser medida se o TLS for ligado.
+- **Fase 6 — Deploy:** implementada e ensaiada localmente (2026-10-23). Falta o deploy de verdade, que o usuário faz: primeiro no Coolify de casa (teste e apresentação), depois na VPS da Hostinger. Painel em `estacao.jodairneves.dev.br`; o endereço do MQTT é configurado em cada estação.
 - O primeiro admin (`ADMIN_EMAIL`/`ADMIN_PASSWORD`) é criado pela API ao subir (hash argon2id).
 - **Hardware do usuário:** D1 mini, BME280, anemômetro e pluviômetro impressos em 3D (modelos MakerWorld), bateria de lítio e talvez um painel solar pequeno.
-- **Produção:** VPS com Coolify **ou** servidor local com Cloudflare Tunnel (painel) e port forward (MQTT 8883).
+- **Produção:**
+  - Definitiva: VPS da Hostinger com Coolify e IP fixo.
+  - Teste e apresentação: o Coolify de casa, com o painel pelo Cloudflare Tunnel e o MQTT por port forward. Se a 1883 de casa continuar com o broker que o usuário já tem, o projeto usa outra porta lá (`MQTT_HOST_PORT`).
 
 ## Registro de atualizações
 
@@ -339,3 +364,31 @@ Sistema de monitoramento de estações meteorológicas DIY (Wemos D1 mini/ESP826
   - O PDF sai do Chromium do Playwright do dashboard, resolvido por `createRequire`; o comando é `pnpm docs:manual`.
 - Ao mudar uma ligação no firmware (`src/hw/pins.h`), atualize o gerador, o `docs/hardware.md` e gere o PDF de novo.
 
+### 2026-10-23 — Fase 6: deploy no Coolify
+- **Decisões do usuário:**
+  - Produção definitiva numa VPS da Hostinger com Coolify e IP fixo; antes, teste e apresentação no Coolify de casa (painel pelo Cloudflare Tunnel, MQTT por port forward).
+  - Painel em `estacao.jodairneves.dev.br`.
+  - O compose traz o Mosquitto do projeto (o broker que o usuário já tem não serve).
+  - MQTT na **1883 sem TLS**, revertendo o TLS 8883 do design. O risco ficou registrado no design §3.10, e o caminho para ligar o TLS depois, no §13.
+- **Imagens:**
+  - `Dockerfile` na raiz com os alvos `collector` e `dashboard`: o pnpm instala o workspace, o esbuild gera um bundle ESM por servidor (`scripts/bundle-server.mjs`) e o Vite gera a SPA.
+  - Imagem final `node:24-slim`, usuário `node`, com healthcheck: `/healthz` no painel e o arquivo `HEALTH_FILE` no coletor, tocado depois de cada heartbeat gravado.
+  - Mosquitto (`infra/mosquitto`) e backup (`infra/backup`) com a configuração dentro da imagem.
+- **`docker-compose.yaml`:**
+  - Postgres, Mosquitto (1883 publicada, `max_packet_size` de 64 KB), coletor, painel (só pelo proxy do Coolify) e backup.
+  - Variáveis obrigatórias com `${VAR:?}`; logs com rotação.
+  - Modelo das variáveis em `.env.production.example`.
+- **Backup:**
+  - `pg_dump` diário e cópia dos logins do broker; 14 cópias diárias e 8 semanais.
+  - `restore.sh` restaura num banco novo e troca os nomes numa transação, guardando o anterior.
+- **Correções encontradas no ensaio:**
+  - Num deploy novo o coletor ficava parado para sempre: o mqtt.js desiste depois do primeiro login recusado. Agora coletor e painel insistem (`reconnectOnConnackError`), com teste de integração que falha sem a correção.
+  - O erro esperado do primeiro bootstrap do painel (o broker derruba o `admin` quando ele ganha um papel) virou um aviso explicado.
+- **Guia:** `docs/deploy.md` (VPS, casa, mudança de servidor, atualizações, backup e restauração, problemas comuns, ensaio local).
+- **Ensaio na máquina de dev** (stack separada, portas 3400 e 1884 só em localhost):
+  - Subida do zero em ~16 s, com tudo saudável.
+  - Login, cadastro de estação, publicação MQTT pela porta publicada, valores e derivados pela API, SSE, SPA com CSP.
+  - Restauração recusada com os apps ligados e feita com eles parados.
+  - Retenção 14/8 e reinício sem perda.
+  - Mudança de servidor (casa → VPS) com banco e logins do broker: a estação conectou com a senha antiga.
+- **Testes:** 164 unitários e 60 de integração (novos: coletor insiste com login recusado; `/healthz` sem sessão).

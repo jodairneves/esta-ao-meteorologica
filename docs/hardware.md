@@ -148,7 +148,7 @@ Roteiro para validar o firmware com a placa de verdade, publicando no ambiente d
    - [ ] Mudar o intervalo na **Configuração remota** gera "Configuração aplicada" nos logs.
    - [ ] Desligar o Wi-Fi do roteador por alguns minutos: ao voltar, as leituras do período chegam do buffer.
    - [ ] Com o perfil **Sempre Economia**, a estação aparece **Dormindo** e envia em lote a cada 10 minutos.
-5. **TLS (produção):** com o servidor da Fase 6, configure a porta **8883** com TLS ligado e confira se a memória livre segue acima de ~8 KB com a conexão segura.
+5. **Produção:** use o servidor e a porta que o painel mostra ao cadastrar a estação (porta **1883**, TLS **desligado**; veja o [guia de deploy](deploy.md)). O firmware também sabe usar TLS na 8883. Se o broker passar a oferecer TLS, confira se a memória livre segue acima de ~8 KB com a conexão segura.
 
 ## Problemas comuns
 

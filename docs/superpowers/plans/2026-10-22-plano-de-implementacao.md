@@ -141,13 +141,17 @@
 
 ## Fase 6 — Deploy
 
-1. Dockerfiles do coletor e do dashboard (múltiplos estágios, usuário não-root, healthcheck).
-2. `docker-compose.yml` de produção com os perfis `tunnel` e `ddns`; `infra/mosquitto/mosquitto.conf` com TLS; renovação de certificados (lego) e recarga no Mosquitto.
-3. Backup diário e procedimento de restauração.
-4. Guias: `docs/deploy-coolify.md` e `docs/deploy-local.md` (Cloudflare Tunnel, port forward, DDNS, verificação de CGNAT).
-5. Ensaio: subir o compose de produção localmente com certificado de staging e conectar o simulador via TLS.
+1. Imagens: `Dockerfile` na raiz com os alvos `collector` e `dashboard` (bundle com esbuild, múltiplos estágios, usuário não-root, healthcheck); Mosquitto e backup com a configuração dentro da imagem.
+2. `docker-compose.yaml` de produção para o Coolify, com o MQTT na 1883 sem TLS (decisão do usuário em 2026-10-23, design §3.10).
+3. Backup diário (banco e logins do broker) e procedimento de restauração.
+4. Guia `docs/deploy.md`: VPS da Hostinger com Coolify; Coolify em casa com Cloudflare Tunnel e port forward; mudança de servidor.
+5. Ensaio: subir o compose de produção localmente, publicar como estação pela porta publicada, restaurar o backup e mudar de servidor.
 
-**Aceite:** a stack sobe do zero só com o `.env`; o simulador publica via TLS 8883; restauração do backup testada.
+**Aceite:** a stack sobe do zero só com as variáveis; uma estação publica pela 1883 publicada; restauração do backup testada.
+
+**Mudanças em relação ao plano original:** saíram o TLS na 8883 com o lego, os perfis `tunnel` e `ddns` e os dois guias separados. O motivo foi a decisão do MQTT sem TLS, somada ao túnel e ao IP fixo que o usuário já tem.
+
+**Andamento (2026-10-23):** itens 1 a 5 concluídos. Falta o deploy de verdade, que o usuário faz: primeiro no Coolify de casa, depois na VPS.
 
 ---
 

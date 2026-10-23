@@ -22,7 +22,7 @@ O script de testes usa o compilador C++ da máquina quando existe (`g++`) e, se 
 |---|---|
 | `src/core/` | Lógica sem hardware, testada no computador: rajada de 3 s, buffer de leituras, perfis de energia com histerese, configuração remota, comandos, mensagens JSON do contrato v1, memória RTC com CRC, conversões do HTU21D e da bateria |
 | `src/hw/` | Pinos, contadores de pulso (interrupções com debounce), sensor de clima, bateria, LED e memória RTC |
-| `src/net/` | Configurações na flash (LittleFS), portal Wi-Fi (WiFiManager), Wi-Fi, NTP e MQTT com TLS (raízes ISRG embarcadas) |
+| `src/net/` | Configurações na flash (LittleFS), portal Wi-Fi (WiFiManager), Wi-Fi, NTP e MQTT, com TLS opcional (raízes ISRG embarcadas) |
 | `src/app/` | A aplicação: intervalos alinhados ao relógio, perfis Normal, Economia e Sobrevivência, sessão MQTT, configuração e comandos |
 | `test/` | Testes Unity da pasta `core` |
 

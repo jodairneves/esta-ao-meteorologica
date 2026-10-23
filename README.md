@@ -11,7 +11,13 @@ Sistema de monitoramento de estações meteorológicas DIY baseadas no **Wemos D
 
 O design completo está em [`docs/superpowers/specs/2026-10-22-estacao-meteorologica-design.md`](docs/superpowers/specs/2026-10-22-estacao-meteorologica-design.md) e o plano por fases em [`docs/superpowers/plans/2026-10-22-plano-de-implementacao.md`](docs/superpowers/plans/2026-10-22-plano-de-implementacao.md).
 
-> **Status:** Fases 1 a 5 concluídas: contrato MQTT, banco de dados, administração do broker, **coletor (App 1)**, **simulador de estações**, **dashboard (App 2)** com API e interface web, e o **firmware** do D1 mini (falta o teste em bancada com a placa real). O deploy vem na próxima fase.
+> **Status:** Fases 1 a 6 concluídas:
+>
+> - contrato MQTT, banco de dados e administração do broker;
+> - **coletor (App 1)** e **simulador de estações**;
+> - **dashboard (App 2)**, com API e interface web;
+> - **firmware** do D1 mini, validado em bancada ainda sem os sensores;
+> - **deploy**: compose de produção para o Coolify, com backup diário.
 
 ## Pré-requisitos
 
@@ -39,6 +45,12 @@ pnpm simulate --backfill 7d          # em outro terminal: 7 dias de histórico +
 Abra <http://localhost:5173> e entre com `ADMIN_EMAIL` / `ADMIN_PASSWORD` do `.env`. O primeiro administrador é criado automaticamente quando a API sobe.
 
 Opções do simulador: `--interval 10` (leituras mais frequentes), `--chaos` (falhas de sensor, quedas de Wi-Fi, falta de energia, duplicatas e payloads inválidos), `--chaos-rate 5` e `--only sede,pivo-norte`. As estações de demonstração cobrem os três perfis de energia: `sede` (solar folgado), `pivo-norte` (solar justo) e `talhao-sul` (bateria fraca, entra em economia e sobrevivência). A `horta` é da versão HTU21D, sem pressão.
+
+## Produção
+
+A produção é o `docker-compose.yaml` da raiz, feito para o recurso Docker Compose do Coolify. Ele sobe o Postgres, o Mosquitto, o coletor, o painel e o backup diário, e as variáveis estão em [`.env.production.example`](.env.production.example). As estações falam MQTT na porta 1883, sem TLS (decisão registrada no design, §3.10).
+
+Passo a passo, backup e restauração: [`docs/deploy.md`](docs/deploy.md).
 
 ## Comandos
 
@@ -72,9 +84,12 @@ packages/
   mqtt-admin/    # Dynamic Security do Mosquitto: papéis e credenciais das estações
 tools/
   simulator/     # estações virtuais (clima, bateria/solar, perfis de energia, falhas)
-firmware/        # D1 mini (PlatformIO, C++): medição, perfis de energia, MQTT com TLS
-infra/           # compose de desenvolvimento e configuração do Mosquitto
-docs/            # design, plano e guias (hardware.md, calibracao.md)
+firmware/        # D1 mini (PlatformIO, C++): medição, perfis de energia, MQTT (TLS opcional)
+infra/           # compose de desenvolvimento e de ensaio, Mosquitto e backup
+scripts/         # bundle dos servidores para as imagens de produção
+docs/            # design, plano e guias (hardware.md, calibracao.md, deploy.md)
+Dockerfile           # imagens do coletor e do painel (alvos collector e dashboard)
+docker-compose.yaml  # produção (Coolify)
 ```
 
 ## Dashboard
