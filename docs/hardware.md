@@ -34,6 +34,8 @@ O firmware é o mesmo nas duas: no boot ele procura o BME280 e, se não achar, o
 
 ## Ligações
 
+Para imprimir e levar para a bancada: [`manual-de-ligacao.pdf`](manual-de-ligacao.pdf), com desenhos de cada ligação, a medição da bateria, o teste depois de ligar e os problemas comuns. Ele é gerado por `pnpm docs:manual` a partir de `docs/manual-de-ligacao/gerar.mjs`; ao mudar uma ligação, atualize os dois.
+
 | Componente | Pino | GPIO | Observação |
 |---|---|---|---|
 | Sensor de clima VCC / GND | 3V3 / G | — | BME280 ou HTU21D (só um) |

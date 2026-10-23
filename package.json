@@ -24,7 +24,8 @@
     "dev": "pnpm --parallel --filter @wx/collector --filter @wx/dashboard dev",
     "dev:collector": "pnpm --filter @wx/collector dev",
     "dev:dashboard": "pnpm --filter @wx/dashboard dev",
-    "simulate": "pnpm --filter @wx/simulator simulate"
+    "simulate": "pnpm --filter @wx/simulator simulate",
+    "docs:manual": "node docs/manual-de-ligacao/gerar.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "2.6.2",

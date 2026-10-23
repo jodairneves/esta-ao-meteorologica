@@ -60,6 +60,7 @@ Sistema de monitoramento de estações meteorológicas DIY (Wemos D1 mini/ESP826
 | `pnpm format` | Formata e organiza imports |
 | `cd firmware && pio run` / `pio run -t upload` / `pio device monitor` | Compila o firmware, grava pelo USB e mostra o log serial (115200) |
 | `firmware/scripts/test-native.sh [-f test_x]` | Testes nativos do firmware (`pio test -e native`); sem `g++` na máquina, roda num contêiner Docker |
+| `pnpm docs:manual` | Gera `docs/manual-de-ligacao.pdf` (manual de ligação dos sensores) a partir de `docs/manual-de-ligacao/gerar.mjs`, com o Chromium do Playwright |
 | `firmware/scripts/serial-log.py [--seconds N] [--portal]` | Log serial do D1 mini sem terminal interativo (bom para rodar em segundo plano); `--portal` abre o portal com reset duplo pelo USB |
 | `DEV_MQTT_BIND=0.0.0.0` no `.env` + `pnpm infra:up` | Expõe o Mosquitto de dev na rede local, só durante o teste em bancada |
 
@@ -323,4 +324,17 @@ Sistema de monitoramento de estações meteorológicas DIY (Wemos D1 mini/ESP826
   - 164 unitários, 58 de integração (senha no cadastro, só admin, auditoria, nova `rev`; IP no coletor) e o E2E da tela da estação.
   - 60 nativos do firmware (formulário, teste com retorno, escape de HTML, senha na configuração, IP).
 - **Bancada:** pela página, o usuário desligou o TLS que tinha ficado ligado (alteração mantida em segundos), gerou a senha no painel e a estação passou a exigir só ela.
+
+### 2026-10-23 — Manual de ligação em PDF
+- **Pedido do usuário:** um manual em PDF de ligação dos sensores nos pinos.
+- **`docs/manual-de-ligacao.pdf`** (8 páginas A4):
+  - resumo das ligações;
+  - mapa de pinos do D1 mini;
+  - sensor de clima, anemômetro, pluviômetro, alimentação e medição da bateria (com o divisor interno);
+  - teste depois de ligar e problemas comuns.
+- **Gerador:** `docs/manual-de-ligacao/gerar.mjs`.
+  - Os desenhos são SVG feitos por funções (placa, módulos e fios com cor e nome, para a impressão em cinza continuar legível).
+  - A fonte Archivo, a mesma do painel, vai embutida.
+  - O PDF sai do Chromium do Playwright do dashboard, resolvido por `createRequire`; o comando é `pnpm docs:manual`.
+- Ao mudar uma ligação no firmware (`src/hw/pins.h`), atualize o gerador, o `docs/hardware.md` e gere o PDF de novo.
 
