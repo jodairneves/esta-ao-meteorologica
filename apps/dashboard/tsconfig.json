@@ -1,0 +1,11 @@
+{
+  // Editor-only config covering the whole package. Type checking uses tsconfig.server.json and
+  // tsconfig.web.json, which keep Node types out of the browser code and vice versa.
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["es2024", "dom", "dom.iterable"],
+    "jsx": "react-jsx",
+    "types": ["node"]
+  },
+  "include": ["src", "*.ts"]
+}
