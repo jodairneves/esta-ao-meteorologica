@@ -1,0 +1,23 @@
+{
+  "name": "@wx/collector",
+  "version": "0.1.0",
+  "private": true,
+  "description": "App 1 — consumes station messages from MQTT and stores them in PostgreSQL.",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch --env-file-if-exists=../../.env src/main.ts",
+    "start": "tsx --env-file-if-exists=../../.env src/main.ts",
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "@wx/db": "workspace:*",
+    "@wx/shared": "workspace:*",
+    "mqtt": "^5.16.1",
+    "pino": "^10.4.0",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@wx/mqtt-admin": "workspace:*",
+    "pino-pretty": "^13.2.0"
+  }
+}
