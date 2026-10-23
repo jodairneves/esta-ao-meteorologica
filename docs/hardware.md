@@ -114,6 +114,22 @@ Para abrir o portal de novo (trocar o Wi-Fi ou a senha): **dois toques no botão
 
 Ao trocar de servidor (da bancada para a produção, por exemplo), de código ou de senha, a estação esquece a configuração remota antiga e recebe a do novo cadastro assim que se conecta.
 
+## Configurar pela rede local
+
+Depois que a estação entra no Wi-Fi, dá para trocar o servidor e a rede sem ir até ela, de um computador ou celular **na mesma rede**:
+
+1. No painel, abra a estação. Em **Energia e sinal** ficam o **IP na rede** e o link **Abrir a página da estação**.
+2. Entre com o usuário **admin** e a senha mostrada ali (botões **Ver** e **Copiar**, só para administradores). Se a estação ainda não tiver senha, toque em **Gerar senha**. Até a estação receber a primeira senha do painel, vale a senha do portal.
+3. Troque o que precisar e toque em **Salvar**:
+   - **Servidor MQTT:** servidor, porta, TLS, código e senha (vazia mantém a salva).
+   - **Wi-Fi:** preencha só para trocar de rede. Depois de salvar, a página deixa de responder no endereço antigo.
+
+A estação testa a alteração por até 2 minutos. Se o que mudou conectar, ela mantém; se não, volta sozinha para a configuração anterior. O resultado aparece nos logs do painel ("Configuração alterada pela página local" ou "desfeita").
+
+A página só existe no perfil Normal: em Economia e Sobrevivência o Wi-Fi fica desligado quase o tempo todo. Se a estação nunca conectou ao servidor, o painel ainda não sabe o IP: procure-o na lista de aparelhos do roteador, com o nome **estacao-{código}** (por exemplo, `estacao-bancada`), ou no log serial.
+
+Para trocar a senha da página: **Cadastro de estações → (estação) → Credenciais → Gerar nova senha da página**. Ela chega à estação junto com a configuração remota.
+
 ## Teste em bancada
 
 Roteiro para validar o firmware com a placa de verdade, publicando no ambiente de desenvolvimento.
@@ -144,7 +160,7 @@ O log serial (`pio device monitor`, 115200 baud) mostra para onde a estação te
 | Sintoma | Causa provável | O que fazer |
 |---|---|---|
 | `erro -3` (sem conexão com o servidor) | Porta errada (1883 sem TLS, 8883 com TLS), endereço do servidor errado ou outro aparelho com o mesmo IP da estação | Confira servidor e porta no portal. Se continuar, veja no roteador se outro aparelho usa o IP da estação e reserve um IP para ela |
-| `código 4` ou `código 5` | Código da estação ou senha MQTT errados | Confira o código no painel. Se a senha se perdeu, use **Gerar nova senha** em **Cadastro de estações → (estação) → Credenciais MQTT** e informe a nova no portal |
+| `código 4` ou `código 5` | Código da estação ou senha MQTT errados | Confira o código no painel. Se a senha se perdeu, use **Gerar nova senha** em **Cadastro de estações → (estação) → Credenciais** e informe a nova no portal |
 | A rede do local não aparece na lista | O D1 mini só enxerga redes de 2,4 GHz | Use a rede de 2,4 GHz do roteador; muitos roteadores usam o mesmo nome nas duas faixas |
 | A página do portal não abre sozinha | DNS privado fixo no celular ou dados móveis ligados | Veja o passo 3 de "Configurar no portal" |
 | A placa some alguns minutos depois de abrir o portal | Deep sleep sem o fio D0–RST | Aperte RESET. Na estação definitiva, ligue o fio |

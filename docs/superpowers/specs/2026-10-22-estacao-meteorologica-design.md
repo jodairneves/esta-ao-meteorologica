@@ -196,12 +196,13 @@ Regras de validação:
   "bat_mv": 3912, "rssi": -67, "heap": 23456, "heap_frag": 12, "uptime": 86400,
   "reset": "Power On", "wifi_reconn": 2, "mqtt_reconn": 3, "buf": 0, "dropped": 0,
   "sensors": { "bme280": "ok", "wind": "ok", "rain": "ok" },
-  "cfg_rev": 3
+  "cfg_rev": 3, "ip": "192.168.1.50"
 }
 ```
 
 - Perfil Normal: enviado a cada `health_s` (padrão 300 s) e após cada (re)conexão. Economia e Sobrevivência: a cada conexão.
 - `bat_mv` é `null` quando não há divisor no A0.
+- `ip`: endereço da estação na rede local, onde fica a página de configuração (§4.5). O painel mostra o último recebido; firmware antigo não envia, e o valor anterior continua.
 - Valores de `sensors.*`: `ok`, `error`, `absent` ou `disabled`.
 - Sensor de clima: o firmware informa o que detectou (`bme280` ou `htu21d`) e o outro como `absent`, por exemplo `"sensors": { "htu21d": "ok", "bme280": "absent", ... }`. O servidor só considera o sensor da versão cadastrada; se a estação reportar o da outra versão funcionando, registra o log `CLIMATE_SENSOR_MISMATCH` (no máximo 1 a cada 10 min).
 
@@ -213,7 +214,7 @@ Regras de validação:
 ```
 
 - `level`: `debug`, `info`, `warn` ou `error`.
-- Códigos da estação (lista mantida em `packages/shared`): `BOOT`, `MODE_CHANGED`, `SENSOR_FAILED`, `SENSOR_RECOVERED`, `BUFFER_OVERFLOW`, `NTP_FAILED`, `CONFIG_APPLIED`, `CONFIG_REJECTED`, `CMD_ACK`.
+- Códigos da estação (lista mantida em `packages/shared`): `BOOT`, `MODE_CHANGED`, `SENSOR_FAILED`, `SENSOR_RECOVERED`, `BUFFER_OVERFLOW`, `NTP_FAILED`, `CONFIG_APPLIED`, `CONFIG_REJECTED`, `CMD_ACK`, `LOCAL_CONFIG_APPLIED` e `LOCAL_CONFIG_REVERTED` (alteração feita na página local, mantida ou desfeita; `data`: `{ "wifi": bool, "server": bool }`).
 - `CMD_ACK.data`: `{ "id": "…", "ok": true, "detail": "…" }`.
 - `CONFIG_APPLIED.data`: `{ "rev": 3 }`. `CONFIG_REJECTED.data`: `{ "rev": 3, "reason": "…" }`.
 
@@ -243,6 +244,8 @@ Regras de validação:
 | `power.bat_full_scale_mv` | 4200 | 3000–6000 | Calibração do divisor do A0 |
 
 A estação aplica a configuração quando `rev` é maior que a aplicada, grava na flash e responde `CONFIG_APPLIED` (ou `CONFIG_REJECTED` com o motivo). A calibração das grandezas não passa por aqui: fica no servidor.
+
+A mensagem leva também `local_password`, a senha da página local da estação (§4.5): 8 a 64 caracteres ASCII visíveis, sem espaços. Ela fica fora de `stations.device_config`, numa coluna própria que só admins leem, e entra só na mensagem publicada. Gerar uma senha nova publica uma nova `rev`.
 
 Trocar o servidor, o código ou a senha no portal apaga a configuração guardada (a `rev` volta a 0). Um cadastro novo recomeça a numeração em 1, por exemplo na passagem da bancada para a produção, e a configuração retida chega de novo na conexão.
 
@@ -348,6 +351,14 @@ Broker com `persistence true` e fila por cliente ampliada (`max_queued_messages`
 - O ponto de acesso do portal é protegido por senha (documentada no guia de hardware).
 - Sem configuração em 5 min, a estação dorme 15 min e tenta de novo (protege a bateria).
 
+**Página na rede local.** No perfil Normal, com o Wi-Fi conectado (mesmo com o MQTT falhando), a estação serve uma página em `http://{ip}` para trocar o servidor (host, porta, TLS, código, senha MQTT) e a rede Wi-Fi sem ir até ela:
+
+- **Acesso:** HTTP Basic, usuário `admin`. A senha vem do painel na configuração (`local_password`); até chegar a primeira, vale a do portal. Cada formulário leva um token gerado no boot, para que outro site não consiga enviar o formulário com o login guardado no navegador.
+- **Teste antes de manter:** a alteração vale primeiro só na RAM (Wi-Fi com `persistent(false)`, configuração MQTT sem gravar). Ela é mantida quando o que mudou conecta: a rede, o servidor ou os dois. Sem isso em 2 minutos, ou se o perfil sair do Normal, a estação volta à configuração anterior e envia `LOCAL_CONFIG_REVERTED`. Um reinício no meio do teste também volta à anterior.
+- **Servidor ou credenciais novos:** a configuração retida do servidor novo fica em espera durante o teste e é buscada de novo quando a alteração é mantida (a `rev` volta a 0).
+- **Memória:** a página é enviada em pedaços a partir da flash, sem montar um `String` grande no heap.
+- **Limites:** não aparece em Economia nem em Sobrevivência (Wi-Fi desligado), e só abre de dentro da rede da estação.
+
 ### 4.6 Fora do v1
 
 OTA remoto e cata-vento (ver §13).
@@ -410,6 +421,7 @@ OTA remoto e cata-vento (ver §13).
 | `device_config` | jsonb | Configuração desejada (§3.7, sem `v` e `rev`) |
 | `device_config_rev` | int | Incrementa a cada alteração |
 | `mqtt_credentials_set_at` | timestamptz null | |
+| `local_password` | text null | Senha da página local (§4.5). Diferente da senha MQTT, fica legível: admins a consultam na tela da estação |
 | `created_by` | uuid null → `users` | |
 | `created_at`, `updated_at` | timestamptz | |
 
@@ -428,6 +440,7 @@ OTA remoto e cata-vento (ver §13).
 | `battery_mv`, `rssi` | int null | |
 | `firmware_version` | text null | |
 | `config_applied_rev` | int null | Vem de `CONFIG_APPLIED` ou `health.cfg_rev` |
+| `ip_address` | text null | Último `health.ip`: endereço da página local |
 | `rain_run`, `rain_last_count`, `rain_last_seq` | bigint null | Estado do cálculo de chuva (§6.1) |
 | `updated_at` | timestamptz | |
 
@@ -700,6 +713,7 @@ Nas rotas de estação, `:id` aceita o uuid ou o código da estação (a SPA usa
 | `PATCH /stations/:id` | admin | Dados, local, calibração, ativação |
 | `DELETE /stations/:id` | admin | Exige digitar o código; remove dados, cliente MQTT e tópicos retidos |
 | `POST /stations/:id/credentials` | admin | Rotaciona a senha MQTT |
+| `GET /stations/:id/local-access` · `POST /stations/:id/local-access` | admin | Login da página local (cada consulta fica na auditoria) · gera uma senha nova e a publica numa nova `rev` |
 | `PUT /stations/:id/device-config` | admin | Nova configuração (incrementa `rev` e publica retida) |
 | `GET /stations/:id/commands` · `POST /stations/:id/commands` | todos · admin | Histórico e envio de comandos |
 | `GET /stations/:id/latest` | todos | Última leitura e derivados (sensação térmica, tendência, Beaufort) e chuva em 1 h, hoje, 24 h, 7 dias, mês e ano |
@@ -740,9 +754,9 @@ Por bucket: média, mínimo e máximo de temperatura, umidade, pressão, pressã
 |---|---|---|
 | `/login` | Login | E-mail, senha, "manter conectado" |
 | `/` | Visão geral | Um cartão por estação (status em cor, valores atuais, chuva de hoje, mini-gráfico de 24 h, bateria); mapa (MapLibre GL, tiles OpenFreeMap sem chave) inclinado em 3D com as estações como colunas proporcionais ao valor escolhido; alertas ativos; saúde do sistema |
-| `/estacoes/:code` | Estação | **Cena 3D** (React Three Fiber, geometria procedural): mastro, anemômetro girando na velocidade medida, pluviômetro, abrigo, painel solar e bateria, LED com a cor do status, céu conforme a hora local e a posição do sol (calculada no próprio app), partículas de chuva quando chove; arrastar para girar. Indicadores ao vivo: temperatura (sensação térmica, mín./máx. do dia), umidade e ponto de orvalho, pressão da estação e ao nível do mar com tendência de 3 h, altitude barométrica, vento médio, rajada e Beaufort, chuva (1 h, hoje, mês) e taxa, bateria e sinal. Gráficos ECharts com períodos (24 h, 7 d, 30 d, 1 ano, personalizado) e zoom: temperatura (faixa mín.–máx. e média), umidade e ponto de orvalho, pressão, vento e rajada, chuva (barras e acumulado). Mapa de calor hora × dia (com versão 3D em React Three Fiber), calendário de chuva diária e tabela diária com exportação CSV |
+| `/estacoes/:code` | Estação | **Cena 3D** (React Three Fiber, geometria procedural): mastro, anemômetro girando na velocidade medida, pluviômetro, abrigo, painel solar e bateria, LED com a cor do status, céu conforme a hora local e a posição do sol (calculada no próprio app), partículas de chuva quando chove; arrastar para girar. Indicadores ao vivo: temperatura (sensação térmica, mín./máx. do dia), umidade e ponto de orvalho, pressão da estação e ao nível do mar com tendência de 3 h, altitude barométrica, vento médio, rajada e Beaufort, chuva (1 h, hoje, mês) e taxa, bateria, sinal e IP na rede local (para admins, link da página local com usuário e senha: Ver e Copiar). Gráficos ECharts com períodos (24 h, 7 d, 30 d, 1 ano, personalizado) e zoom: temperatura (faixa mín.–máx. e média), umidade e ponto de orvalho, pressão, vento e rajada, chuva (barras e acumulado). Mapa de calor hora × dia (com versão 3D em React Three Fiber), calendário de chuva diária e tabela diária com exportação CSV |
 | `/comparar` | Comparar | Mesma grandeza de várias estações num gráfico |
-| `/dispositivos` | Dispositivos | Por estação: perfil de energia, bateria (V e %) e sinal ao longo do tempo, resets, firmware, buffer e descartes, linha do tempo de conexão e situação de cada sensor ("último dado há X min") |
+| `/dispositivos` | Dispositivos | Por estação: perfil de energia, bateria (V e %), sinal e IP ao longo do tempo, resets, firmware, buffer e descartes, linha do tempo de conexão e situação de cada sensor ("último dado há X min") |
 | `/alertas` | Alertas | Ativos e histórico; reconhecimento |
 | `/logs` | Logs | Filtros por nível, origem, categoria, estação, período e texto; ao vivo; detalhe em JSON (inclusive payload rejeitado) |
 | `/admin/estacoes` | Estações (admin) | Lista e formulário: dados, local no mapa (altitude sugerida pela API de elevação do Open-Meteo), fuso, calibração (com calculadora do anemômetro: raio, pulsos por volta e fator → m/s por Hz), configuração remota, credenciais MQTT (exibidas uma vez, com instruções do portal), comandos, desativar e excluir |

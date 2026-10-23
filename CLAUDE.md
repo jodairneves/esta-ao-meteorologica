@@ -28,6 +28,7 @@ Sistema de monitoramento de estações meteorológicas DIY (Wemos D1 mini/ESP826
 - Duas versões de estação: **completa** (BME280) e **HTU21D** (sem pressão nem altitude). A versão é definida no cadastro (`stations.climate_sensor`); um único firmware detecta o sensor ligado. O contrato MQTT continua na v1 (`pres: null` e `health.sensors.htu21d`).
 - O mapa usa o OpenFreeMap (gratuito, sem chave e sem garantia de funcionamento) e a altitude do cadastro usa o Open-Meteo (plano grátis só para uso não comercial). O usuário confirmou que o uso **não é comercial** (2026-10-23).
 - O MQTT exposto na internet usa sempre TLS (8883), com credencial própria por estação.
+- A estação serve uma página de configuração na rede local (servidor MQTT e Wi-Fi), pedido do usuário em 2026-10-23. A senha dela é gerada pelo painel, fica legível em `stations.local_password` (só admins, com auditoria) e vai para a estação na configuração retida.
 
 ## Convenções
 
@@ -105,9 +106,16 @@ Sistema de monitoramento de estações meteorológicas DIY (Wemos D1 mini/ESP826
   - A placa do usuário aparece como `/dev/ttyUSB0` (CH340, MAC `cc:50:e3:08:08:e6`); o usuário está no grupo `dialout`.
   - O `pio device monitor` precisa de terminal interativo; daqui, use `firmware/scripts/serial-log.py` (pyserial do `python3` do sistema).
   - Abrir a porta reinicia a placa, mesmo com DTR e RTS desligados no pyserial (o kernel os liga ao abrir). Um pulso no RTS é outro reset, como faz o esptool.
-  - Logo depois de gravar, espere 3 s antes de abrir a serial: o reset do fim da gravação e o da abertura contam como reset duplo e abrem o portal. Durante o portal o `resetArmed` não é limpo, então um reset ali reabre o portal; em 5 min sem uso ele expira e a placa segue com a configuração salva.
+  - Depois de gravar, a placa às vezes abre o portal: o reset do fim da gravação e o da abertura da serial (ou dois do próprio esptool) contam como reset duplo. Um reset simples sai do portal, porque o boot que abre o portal desarma o reset duplo; ou, em 5 min sem uso, ele expira e a placa segue com a configuração salva. Para conferir sem reiniciar, não abra a serial: teste a página local por `curl` ou procure a rede `Estacao-XXXXXX`.
   - O ROM do ESP8266 imprime a 74880 baud, então as primeiras linhas saem ilegíveis a 115200.
 - **Firmware — portal e memória:** o WiFiManager monta a página inteira num `String`, e o `String` do ESP8266 cresce sob medida com `realloc`. Sem um bloco contíguo, o `concat` devolve `false` e o trecho some sem erro. Com 16 redes por perto, os campos do servidor sumiram. Hoje a página tem ~7 KB com 16 redes, e o cliente MQTT só reserva os buffers no `Link::begin()`. Na bancada, o log mostrou ~19 KB livres (maior bloco ~13–19 KB) ao abrir o portal; se crescer a página, meça de novo.
+- **Firmware — página local** (`src/net/local_page.cpp`, lógica pura em `core/local_form`, `core/config_trial` e `core/html`):
+  - Só no perfil Normal, com o Wi-Fi conectado (mesmo com o MQTT falhando). HTTP Basic com usuário `admin`; a senha é a `local_password` da configuração ou, antes da primeira, a do portal. Um token por boot protege os formulários contra envio por outro site.
+  - Daqui dá para testar com `curl -u admin:SENHA http://IP-DA-ESTACAO/`, porque o computador está na mesma rede que a placa. A senha está em `stations.local_password` no banco de dev.
+  - O `WiFi.disconnect()` do core **apaga** as credenciais, e na flash se `persistent(true)`, que é o padrão. O `Link::begin()` liga `persistent(false)` logo no início, e a rede nova só vai para a flash no `Link::saveWifi()`, quando o teste dá certo.
+  - Alterações valem primeiro só na RAM, por até 2 min (`ConfigTrial`). Com servidor ou credenciais novos, a configuração retida que chega durante o teste é ignorada; quando a alteração é mantida, a `rev` volta a 0 e o MQTT reconecta para buscá-la de novo.
+  - No ESP8266, string comum fica na RAM. A página vai em pedaços a partir da flash (`PSTR`, `sendContent_P`), e as mensagens do `core` usam `WX_TEXT` (`core/flash_text.h`), que vira `PSTR` no ESP8266 e texto comum nos testes nativos. O estado do teste só é alocado durante uma alteração. Resultado: 59,4% de RAM estática.
+  - Nome na rede (DHCP): `estacao-{código}`, cortado em 32 caracteres (o `WiFi.hostname()` do core recusa nomes maiores).
 - **Firmware — rede do usuário:** Wi-Fi UniFi (Ubiquiti) com a mesma rede `X` em 2,4, 5 e 6 GHz; o computador fica nos 6 GHz e o D1 mini nos 2,4 GHz, e eles se enxergam. Na primeira conexão houve conflito de IP: a placa recebeu 10.25.50.110, que um aparelho Samsung também usava (o ARP do computador apontava para o MAC dele). Na reconexão ela pegou 10.25.50.111.
 - **Firmware — portal (WiFiManager 2.0.17):**
   - Os textos em pt-BR ficam em `firmware/include/wm_strings_pt_br.h`, escolhido por `-DWM_STRINGS_FILE`. A biblioteca é compilada à parte do projeto e só encontra o arquivo por causa do `-I include` nas `build_flags`.
@@ -125,7 +133,7 @@ Sistema de monitoramento de estações meteorológicas DIY (Wemos D1 mini/ESP826
 - **Fase 3 — API do Dashboard:** concluída (2026-10-23).
 - **Fase 4 — Web:** concluída (2026-10-23), com o teste de ponta a ponta usando os dados fictícios do simulador.
 - **Fase 4.5 — Duas versões de estação (BME280 e HTU21D):** concluída (2026-10-23).
-- **Fase 5 — Firmware:** implementada (2026-10-23). Compila e passa nos testes nativos. Na bancada (2026-10-23), um D1 mini real ainda sem sensores, a estação `bancada`, configurado pelo portal, publica no ambiente de dev: online, leituras, diagnóstico e configuração remota aplicada. Falta ligar os sensores (BME280 ou HTU21D, anemômetro, pluviômetro e o divisor da bateria) e medir a memória com TLS, que depende da Fase 6.
+- **Fase 5 — Firmware:** implementada (2026-10-23). Compila e passa nos testes nativos. Na bancada (2026-10-23), um D1 mini real ainda sem sensores, a estação `bancada`, configurado pelo portal, publica no ambiente de dev: online, leituras, diagnóstico e configuração remota aplicada. A página local também foi validada: troca de servidor mantida, senha gerada pelo painel aplicada, IP 10.25.50.111 no painel. Falta ligar os sensores (BME280 ou HTU21D, anemômetro, pluviômetro e o divisor da bateria) e medir a memória com TLS, que depende da Fase 6.
 - **Próximo:** Fase 6 (deploy), já aprovada. Falta o usuário dizer o domínio, onde está o DNS e se começa pela VPS/Coolify ou pelo servidor local.
 - O primeiro admin (`ADMIN_EMAIL`/`ADMIN_PASSWORD`) é criado pela API ao subir (hash argon2id).
 - **Hardware do usuário:** D1 mini, BME280, anemômetro e pluviômetro impressos em 3D (modelos MakerWorld), bateria de lítio e talvez um painel solar pequeno.
@@ -292,4 +300,27 @@ Sistema de monitoramento de estações meteorológicas DIY (Wemos D1 mini/ESP826
   - Defeito antigo: quando o portal expirava sem salvar, o firmware copiava os campos de volta, e a caixa do TLS (valor sempre `"1"`; só o `checked` muda) ligava o TLS na flash. Agora, se não houver salvamento, nada é copiado.
 - **Resultado:** a estação `bancada` online pelo MQTT (1883, sem TLS) com leituras a cada minuto, alinhadas ao relógio, temperatura, umidade e pressão `null` (sem sensor), bateria `null` (sem divisor), 17 KB de heap livre conectada e alerta `sensor_error` do BME280, esperado.
 - **Docs:** seção "Problemas comuns" no guia de hardware.
+
+### 2026-10-23 — Página da estação na rede local e IP no painel
+- **Pedido do usuário:** configurar a estação pelo IP dela, sem ir até o dispositivo, e ver o IP no painel. Decisões dele:
+  - senha própria da página, com **Ver** e **Copiar** na tela da estação;
+  - troca de Wi-Fi permitida, com retorno automático.
+- **Contrato v1 (compatível):** `health.ip`; `local_password` opcional na mensagem `config`; eventos `LOCAL_CONFIG_APPLIED` e `LOCAL_CONFIG_REVERTED`.
+- **Banco:** migração `0004` (`station_state.ip_address`, `stations.local_password`), aplicada no banco de dev com confirmação do usuário.
+- **Coletor:** grava o IP recebido no diagnóstico; se ele não vier, o último conhecido continua.
+- **API:**
+  - Senha gerada no cadastro (`xxxx-xxxx-xxxx`, sem caracteres parecidos) e publicada em toda configuração.
+  - `GET` e `POST /stations/:id/local-access`, só admin: ver (com auditoria `LOCAL_PASSWORD_VIEWED`) e gerar nova (`LOCAL_PASSWORD_ROTATED`, nova `rev`).
+- **Painel:**
+  - "IP na rede" em Energia e sinal; para admins, o link da página com usuário e senha (Ver e Copiar), e Gerar senha nas estações antigas.
+  - IP na tela Dispositivos; troca da senha na aba Credenciais (que antes se chamava Credenciais MQTT).
+- **Firmware:**
+  - Página com senha e token.
+  - Troca de servidor e Wi-Fi testada por 2 min e desfeita se não conectar (também se o perfil sair do Normal).
+  - IP no diagnóstico e nome `estacao-{código}` na rede.
+- **Simulador:** IPs fictícios da faixa de documentação (192.0.2.x).
+- **Testes:**
+  - 164 unitários, 58 de integração (senha no cadastro, só admin, auditoria, nova `rev`; IP no coletor) e o E2E da tela da estação.
+  - 60 nativos do firmware (formulário, teste com retorno, escape de HTML, senha na configuração, IP).
+- **Bancada:** pela página, o usuário desligou o TLS que tinha ficado ligado (alteração mantida em segundos), gerou a senha no painel e a estação passou a exigir só ela.
 
