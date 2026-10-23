@@ -21,6 +21,7 @@ Sistema para acompanhar estações meteorológicas DIY:
 - Stack: Node.js, Vite, PostgreSQL e Mosquitto (MQTT).
 - Controlador: Wemos D1 mini (ESP8266), com todos os sensores ligados nele.
 - Grandezas: temperatura, umidade, pressão e altitude (BME280), vento (anemômetro) e chuva (pluviômetro).
+- Duas versões de estação (pedido de 2026-10-23): a **completa**, com BME280, e a **HTU21D**, em que o HTU21D substitui o BME280 e por isso não há pressão nem altitude. Vento, chuva e bateria são iguais nas duas.
 - A frequência de envio é configurada na estação; toda mensagem nova no MQTT é gravada no banco.
 - Acesso com e-mail e senha. Perfis: **admin** (acesso total, cadastra usuários e estações) e **operador** (acesso básico, não cadastra nada).
 - Produção em VPS ou servidor local, com Coolify para facilitar o deploy.
@@ -35,6 +36,7 @@ Sistema para acompanhar estações meteorológicas DIY:
 | Produção | VPS na internet **ou** servidor local com Cloudflare Tunnel (painel) e port forward (MQTT) |
 | Visual | Tema próprio meteorológico (escuro/futurista) |
 | Arquitetura | Abordagem A: o banco de dados é o ponto de integração entre os apps |
+| Versões da estação | O cadastro define a versão (`climate_sensor`: `bme280` ou `htu21d`). Um único firmware detecta qual sensor está ligado e avisa se não bater com o cadastro. O contrato MQTT continua na v1 |
 
 ### 1.4 Referências
 
@@ -163,9 +165,9 @@ Estação D1 mini ──MQTT/TLS :8883──▶ Mosquitto ──QoS 1──▶ A
 | `seq` | uint32 | — | — | Sequência da leitura dentro do `run` |
 | `ts` | int | s | de agora − 30 dias até agora + 5 min | Fim do intervalo medido |
 | `dur` | int | s | 1 a 3600 | Duração do intervalo |
-| `temp` | number \| null | °C | −40 a 85 | BME280, sem offset |
-| `hum` | number \| null | % | 0 a 100 | BME280, sem offset |
-| `pres` | number \| null | hPa | 300 a 1100 | Pressão absoluta da estação, sem offset |
+| `temp` | number \| null | °C | −40 a 85 | BME280 ou HTU21D, sem offset |
+| `hum` | number \| null | % | 0 a 100 | BME280 ou HTU21D, sem offset |
+| `pres` | number \| null | hPa | 300 a 1100 | Pressão absoluta da estação, sem offset. Sempre `null` na versão HTU21D |
 | `wind_p` | int \| null | pulsos | 0 a 300 × `dur` | Pulsos do anemômetro no intervalo |
 | `gust_p` | int \| null | pulsos | 0 a 900 e ≤ `wind_p` | Maior soma de pulsos em qualquer janela de 3 s do intervalo |
 | `rain_c` | uint32 \| null | basculadas | — | Contador acumulado dentro do `run` |
@@ -201,6 +203,7 @@ Regras de validação:
 - Perfil Normal: enviado a cada `health_s` (padrão 300 s) e após cada (re)conexão. Economia e Sobrevivência: a cada conexão.
 - `bat_mv` é `null` quando não há divisor no A0.
 - Valores de `sensors.*`: `ok`, `error`, `absent` ou `disabled`.
+- Sensor de clima: o firmware informa o que detectou (`bme280` ou `htu21d`) e o outro como `absent`, por exemplo `"sensors": { "htu21d": "ok", "bme280": "absent", ... }`. O servidor só considera o sensor da versão cadastrada; se a estação reportar o da outra versão funcionando, registra o log `CLIMATE_SENSOR_MISMATCH` (no máximo 1 a cada 10 min).
 
 ### 3.6 `event`
 
@@ -290,7 +293,7 @@ Broker com `persistence true` e fila por cliente ampliada (`max_queued_messages`
 
 | Componente | Pino | GPIO | Observação |
 |---|---|---|---|
-| BME280 SDA / SCL | D2 / D1 | 4 / 5 | I²C, endereço 0x76 ou 0x77 (detecção automática) |
+| BME280 **ou** HTU21D SDA / SCL | D2 / D1 | 4 / 5 | I²C. BME280 em 0x76 ou 0x77; HTU21D em 0x40. O firmware detecta qual está ligado |
 | Pluviômetro (reed ou Hall digital) | D5 | 14 | `INPUT_PULLUP`, interrupção |
 | Anemômetro (reed ou Hall digital) | D6 | 12 | `INPUT_PULLUP`, interrupção |
 | Bateria (+) passando por resistor de 100 kΩ | A0 | — | Soma-se ao divisor interno (220k/100k): fundo de escala ≈ 4,2 V |
@@ -300,7 +303,7 @@ Broker com `persistence true` e fila por cliente ampliada (`max_queued_messages`
 - **Sensores de pulso:** reed switch (0 mA) ou Hall digital de 3,3 V e baixo consumo (ex.: DRV5032). O 49E não é recomendado (~6 mA contínuos e repouso em zona indefinida). Retirar os LEDs das plaquinhas dos sensores.
 - **Alimentação:** célula 18650 (Li-ion) no pino 5V, passando pelo regulador do D1 mini. ⚠️ Nunca ligar o USB com a bateria conectada ao pino 5V — o USB alimentaria a bateria diretamente. Usar um diodo ou desconectar a bateria antes. Alternativa mais eficiente: LiFePO4 direto no 3V3, com os limiares de energia ajustados.
 - **Solar (opcional):** painel de 5–6 V e 1–3 W com carregador TP4056 com proteção.
-- **BME280:** fora da caixa do ESP, em abrigo ventilado.
+- **BME280 ou HTU21D:** fora da caixa do ESP, em abrigo ventilado. Os dois funcionam em 3,3 V e usam a mesma ligação; só um deles por estação.
 
 ### 4.2 Medição
 
@@ -308,6 +311,8 @@ Broker com `persistence true` e fila por cliente ampliada (`max_queued_messages`
 - **Pluviômetro:** interrupção em mudança de estado (`rain_edge=change`) ou na borda de descida (`falling`); debounce de 50 ms.
 - **Rajada:** a cada 1 s soma os pulsos daquele segundo; mantém a soma móvel dos últimos 3 s; `gust_p` é a maior soma do intervalo (rajada de 3 s, padrão OMM).
 - **BME280:** modo forçado, oversampling ×1 e filtro desligado (modo "weather monitoring" da Bosch), uma leitura no fim de cada intervalo.
+- **HTU21D:** medição sem "hold master" (temperatura com 14 bits, umidade com 12 bits), com conferência do CRC de cada resposta; uma leitura no fim de cada intervalo. Não mede pressão: `pres` vai `null`.
+- **Detecção do sensor de clima:** no boot, o firmware procura o BME280 (ID 0x60 em 0x76/0x77) e depois o HTU21D (0x40). O que encontrar é usado e informado no `health`; se nenhum responder, `temp`/`hum`/`pres` vão `null` e o `health` informa os dois como `absent`.
 - **Alinhamento:** com NTP, os intervalos fecham em múltiplos de `interval_s` no relógio (ex.: segundo 0 de cada minuto).
 - **Contadores** (`run`, `seq`, `rain_c`) na memória RTC com CRC: sobrevivem a reset e deep sleep. Se a RTC estiver inválida, um `run` aleatório novo é gerado e os contadores recomeçam do zero.
 
@@ -393,6 +398,7 @@ OTA remoto e cata-vento (ver §13).
 | `latitude`, `longitude` | double null | |
 | `elevation_m` | real null | Altitude do local, usada na pressão ao nível do mar |
 | `timezone` | text | Padrão `America/Sao_Paulo` |
+| `climate_sensor` | text | Versão da estação: `bme280` (completa, padrão) ou `htu21d` (sem pressão) |
 | `is_active` | boolean | Inativa: cliente MQTT desabilitado e mensagens ignoradas |
 | `rain_mm_per_tip` | real | Padrão 0,64 |
 | `wind_ms_per_hz` | real | Padrão 0,42 |
@@ -447,7 +453,7 @@ OTA remoto e cata-vento (ver §13).
 | Coluna | Tipo | Observação |
 |---|---|---|
 | `station_id` | uuid → `stations` (cascade) | PK composta com `sensor` |
-| `sensor` | text | `bme280` \| `anemometer` \| `rain_gauge` \| `battery` |
+| `sensor` | text | `bme280` \| `htu21d` \| `anemometer` \| `rain_gauge` \| `battery` (o sensor de clima é o da versão cadastrada) |
 | `status` | text | `unknown` \| `ok` \| `stale` \| `error` \| `not_measured` \| `disabled` |
 | `last_value_at` | timestamptz null | Última leitura com valor não nulo |
 | `status_changed_at` | timestamptz null | |
@@ -739,6 +745,8 @@ Por bucket: média, mínimo e máximo de temperatura, umidade, pressão, pressã
 | `/admin/usuarios` | Usuários (admin) | Criar, editar perfil, ativar/desativar, redefinir senha, excluir |
 | `/admin/configuracoes` | Configurações (admin) | Retenção e limiares de monitoramento |
 | `/perfil` | Meu perfil | Trocar a senha |
+
+Versão HTU21D na interface: o cadastro escolhe a versão; na tela da estação somem o painel e o gráfico de pressão, a tendência e a altitude barométrica; a coluna de pressão da visão geral mostra "—" com a observação "Versão sem barômetro"; na comparação de pressão essas estações ficam de fora, com aviso.
 
 Status da estação na interface: **Online** (verde), **Dormindo** (neutro, com ícone de lua; sem contato esperado até `next`), **Sem contato** (âmbar/vermelho, alerta `station_offline` ativo), **Nunca conectou** (neutro) e **Desativada** (neutro). O azul fica reservado à chuva. A cor nunca aparece sozinha: sempre com ícone e texto.
 

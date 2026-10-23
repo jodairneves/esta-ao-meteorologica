@@ -1,6 +1,9 @@
 # Estação Meteorológica
 
-Sistema de monitoramento de estações meteorológicas DIY baseadas no **Wemos D1 mini (ESP8266)**, com BME280 (temperatura, umidade, pressão e altitude), anemômetro e pluviômetro.
+Sistema de monitoramento de estações meteorológicas DIY baseadas no **Wemos D1 mini (ESP8266)**, com anemômetro, pluviômetro e um sensor de clima, em duas versões:
+
+- **Completa:** BME280 (temperatura, umidade, pressão e altitude).
+- **HTU21D:** temperatura e umidade, sem pressão nem altitude.
 
 - **App 1 — Coletor:** recebe tudo o que as estações publicam no MQTT (Mosquitto) e grava no PostgreSQL.
 - **App 2 — Dashboard:** painel web com gráficos, visualização 3D, cadastro de estações e usuários (admin/operador) e registros do sistema (logs, alertas, saúde dos dispositivos).
@@ -35,7 +38,7 @@ pnpm simulate --backfill 7d          # em outro terminal: 7 dias de histórico +
 
 Abra <http://localhost:5173> e entre com `ADMIN_EMAIL` / `ADMIN_PASSWORD` do `.env`. O primeiro administrador é criado automaticamente quando a API sobe.
 
-Opções do simulador: `--interval 10` (leituras mais frequentes), `--chaos` (falhas de sensor, quedas de Wi-Fi, falta de energia, duplicatas e payloads inválidos), `--chaos-rate 5` e `--only sede,pivo-norte`. As estações de demonstração cobrem os três perfis de energia: `sede` (solar folgado), `pivo-norte` (solar justo) e `talhao-sul` (bateria fraca, entra em economia e sobrevivência).
+Opções do simulador: `--interval 10` (leituras mais frequentes), `--chaos` (falhas de sensor, quedas de Wi-Fi, falta de energia, duplicatas e payloads inválidos), `--chaos-rate 5` e `--only sede,pivo-norte`. As estações de demonstração cobrem os três perfis de energia: `sede` (solar folgado), `pivo-norte` (solar justo) e `talhao-sul` (bateria fraca, entra em economia e sobrevivência). A `horta` é da versão HTU21D, sem pressão.
 
 ## Comandos
 

@@ -25,6 +25,8 @@ Sistema de monitoramento de estações meteorológicas DIY (Wemos D1 mini/ESP826
 - `null` significa "não medido"; nunca converter para 0.
 - A tabela `readings` é larga (uma coluna por grandeza); sensor novo exige migração.
 - Perfis: `admin` (tudo) e `operator` (somente leitura, mais reconhecer alertas e exportar CSV).
+- Duas versões de estação: **completa** (BME280) e **HTU21D** (sem pressão nem altitude). A versão é definida no cadastro (`stations.climate_sensor`); um único firmware detecta o sensor ligado. O contrato MQTT continua na v1 (`pres: null` e `health.sensors.htu21d`).
+- O mapa usa o OpenFreeMap (gratuito, sem chave e sem garantia de funcionamento) e a altitude do cadastro usa o Open-Meteo (plano grátis só para uso não comercial). O usuário confirmou que o uso **não é comercial** (2026-10-23).
 - O MQTT exposto na internet usa sempre TLS (8883), com credencial própria por estação.
 
 ## Convenções
@@ -46,7 +48,7 @@ Sistema de monitoramento de estações meteorológicas DIY (Wemos D1 mini/ESP826
 | `pnpm db:migrate` | Aplica migrações + configurações padrão (`DATABASE_URL`) |
 | `pnpm --filter @wx/db exec drizzle-kit generate --name <nome>` | Gera migração nova a partir de `packages/db/src/schema` |
 | `pnpm mqtt:bootstrap` | Configura papéis/ACLs e o cliente `collector` no broker (idempotente) |
-| `pnpm db:seed` | Estações de demonstração (`sede`, `pivo-norte`, `talhao-sul`) + credenciais em `tools/simulator/.stations.json` (git-ignored) |
+| `pnpm db:seed` | Estações de demonstração (`sede`, `pivo-norte`, `talhao-sul` e `horta`, esta da versão HTU21D) + credenciais em `tools/simulator/.stations.json` (git-ignored); gera senhas novas a cada execução |
 | `pnpm dev` | Coletor + API do dashboard (3300) + Vite (5173), em paralelo |
 | `pnpm dev:collector` / `pnpm dev:dashboard` | Só o App 1, ou só a API + Vite do App 2 |
 | `pnpm --filter @wx/dashboard build` | SPA em `apps/dashboard/dist/web`; a API a serve quando `WEB_DIST` aponta para lá |
@@ -85,6 +87,9 @@ Sistema de monitoramento de estações meteorológicas DIY (Wemos D1 mini/ESP826
 - **Web — 401 no console:** com a sessão expirada, `/auth/me` responde 401 e o navegador registra o erro de rede; é esperado (o guard manda para o login).
 - **Playwright:** no headless, WebGL (mapa e cenas 3D) precisa de `--use-angle=swiftshader` (já no `playwright.config.ts`). O login aceita 5 tentativas por minuto por IP+e-mail: a suíte faz 2 logins do admin, então rodá-la 3 vezes no mesmo minuto dá 429.
 - **Biome:** `css.parser.tailwindDirectives` ligado (para `@theme`); `noLabelWithoutControl` conhece `Input`, `Select` e `PasswordInput` como controles.
+- **`pnpm db:migrate`** sempre termina com "Database is up to date.", mesmo quando acabou de aplicar migrações (a frase quer dizer "agora está atualizado").
+- **Coletor e API aplicam migrações sozinhos ao subir** (`prepareDatabase`), e o `pnpm dev` (tsx watch) reinicia quando o esquema muda. Antes de gerar uma migração, pare o `pnpm dev` se ela não deve ser aplicada ainda; o usuário pede confirmação explícita antes de migrar o banco de dev.
+- **Cores das estações na comparação:** as posições seguem a ordem de cadastro (ids UUIDv7), para que uma estação nova não mude as cores das antigas.
 - **Simulador:** `--interval` só acelera as leituras; o monitor usa o intervalo configurado no banco (60 s). Intervalo maior que o configurado gera alerta de estação sem contato. O `--backfill` consulta a última leitura de cada estação no banco para não duplicar histórico.
 
 ## Estado atual
@@ -93,7 +98,8 @@ Sistema de monitoramento de estações meteorológicas DIY (Wemos D1 mini/ESP826
 - **Fase 2 — Coletor + simulador:** concluída (2026-10-23).
 - **Fase 3 — API do Dashboard:** concluída (2026-10-23).
 - **Fase 4 — Web:** concluída (2026-10-23), com o teste de ponta a ponta usando os dados fictícios do simulador.
-- **Próximo passo:** checkpoint com o usuário antes das Fases 5 (firmware) e 6 (deploy).
+- **Fase 4.5 — Duas versões de estação (BME280 e HTU21D):** concluída (2026-10-23).
+- **Em andamento:** Fase 5 (firmware), aprovada pelo usuário junto com a Fase 6 (deploy). Para a Fase 6, falta saber o domínio, onde está o DNS e se começa por VPS/Coolify ou servidor local.
 - O primeiro admin (`ADMIN_EMAIL`/`ADMIN_PASSWORD`) é criado pela API ao subir (hash argon2id).
 - **Hardware do usuário:** D1 mini, BME280, anemômetro e pluviômetro impressos em 3D (modelos MakerWorld), bateria de lítio e talvez um painel solar pequeno.
 - **Produção:** VPS com Coolify **ou** servidor local com Cloudflare Tunnel (painel) e port forward (MQTT 8883).
@@ -211,3 +217,16 @@ Sistema de monitoramento de estações meteorológicas DIY (Wemos D1 mini/ESP826
   - O resto da tela (lista de estações, valores ao vivo, gráficos) continua funcionando.
 - `hydrateFallbackElement` no roteador (fim do aviso `HydrateFallback` no console).
 - **Testes:** novo E2E `no-webgl` (11 no total).
+
+### 2026-10-23 — Fase 4.5: duas versões de estação
+- **Pedido do usuário:** além da estação completa (BME280), uma versão em que o HTU21D substitui o BME280; sem pressão, tendência nem altitude barométrica. Vento, chuva e bateria iguais.
+- **`@wx/shared`:** `CLIMATE_SENSORS` (`bme280`, `htu21d`), sensor `htu21d`, `measuresPressure()`; `health.sensors.htu21d` no contrato v1.
+- **Banco:** migração `0003` (`stations.climate_sensor`, padrão `bme280`; `station_sensors` aceita `htu21d`). Aplicada no banco de dev com confirmação do usuário.
+- **Coletor:** só o sensor de clima da versão cadastrada é esperado e gera alertas. Se a estação reporta o da outra versão funcionando, grava `CLIMATE_SENSOR_MISMATCH` (no máximo 1 a cada 10 min).
+- **API e painel:**
+  - Versão no cadastro; trocar a versão apaga a linha e os alertas do sensor antigo.
+  - Na estação HTU21D somem o painel e o gráfico de pressão e a coluna do resumo diário.
+  - Na visão geral, a pressão aparece como "—" com "Versão sem barômetro".
+  - Na comparação de pressão, essas estações ficam de fora, com aviso.
+- **Simulador:** estação de demonstração `horta` (HTU21D), que envia `pres: null` e informa o sensor certo no `health`.
+- **Testes:** 162 unitários, 57 de integração e 12 E2E (novos: contrato, regras do monitor, sensor instalado, leitura sem pressão, aviso de sensor trocado, troca de versão pela API e cadastro HTU21D no navegador).

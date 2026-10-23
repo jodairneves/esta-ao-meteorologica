@@ -110,11 +110,22 @@
 
 ---
 
+## Fase 4.5 — Duas versões de estação (pedido de 2026-10-23)
+
+1. `climate_sensor` na estação (`bme280` ou `htu21d`), migração `0003`; sensor `htu21d` no contrato v1 (`health.sensors`).
+2. Coletor: só o sensor de clima da versão cadastrada conta (sensores esperados, alertas); log `CLIMATE_SENSOR_MISMATCH` quando a estação reporta o da outra versão.
+3. API e telas: versão no cadastro; estação, visão geral e comparação sem pressão para a versão HTU21D.
+4. Simulador: estação de demonstração "Horta" com HTU21D.
+
+**Aceite:** testes unitários e de integração cobrindo a versão HTU21D; painel conferido com o simulador.
+
+---
+
 ## Fase 5 — Firmware do D1 mini
 
 1. Projeto PlatformIO com os ambientes `d1_mini` e `native`; estrutura de módulos.
 2. Lógica pura com testes nativos: rajada, buffer, máquina de perfis, montagem do payload, CRC da RTC.
-3. Drivers: pulsos (ISR com debounce), BME280, bateria (ADC), LED.
+3. Drivers: pulsos (ISR com debounce), BME280 e HTU21D (com detecção automática de qual está ligado), bateria (ADC), LED.
 4. Rede: Wi-Fi, NTP, MQTT com TLS (raízes ISRG), LWT, assinaturas, remoção do buffer só após PUBACK, reconexão com espera progressiva. Medir cedo a RAM livre com TLS em bancada.
 5. Portal (WiFiManager + dois toques no RESET) e persistência (LittleFS).
 6. Perfis de energia (Normal, Economia, Sobrevivência com deep sleep).
@@ -122,7 +133,7 @@
 8. Guias: `docs/hardware.md` (ligações, lista de materiais, alimentação e segurança da bateria) e `docs/calibracao.md`.
 9. Teste em bancada com o D1 mini real, publicando no ambiente de desenvolvimento.
 
-**Aceite:** `pio test -e native` e `pio run -e d1_mini` passam; em bancada a estação aparece online no painel e os pulsos viram vento e chuva.
+**Aceite:** `pio test -e native` e `pio run -e d1_mini` passam; em bancada a estação aparece online no painel e os pulsos viram vento e chuva, com BME280 ou com HTU21D.
 
 ---
 
