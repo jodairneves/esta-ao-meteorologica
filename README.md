@@ -48,7 +48,14 @@ Opções do simulador: `--interval 10` (leituras mais frequentes), `--chaos` (fa
 
 ## Produção
 
-A produção é o `docker-compose.yaml` da raiz, feito para o recurso Docker Compose do Coolify. Ele sobe o Postgres, o Mosquitto, o coletor, o painel e o backup diário, e as variáveis estão em [`.env.production.example`](.env.production.example). As estações falam MQTT na porta 1883, sem TLS (decisão registrada no design, §3.10).
+Dois composes na raiz, feitos para o recurso Docker Compose do Coolify:
+
+| Compose | Para | O que sobe | Variáveis |
+|---|---|---|---|
+| `docker-compose.yaml` | VPS (produção) | Postgres, Mosquitto com um login por estação, coletor, painel e backup diário | [`.env.production.example`](.env.production.example) |
+| `docker-compose.home.yaml` | Coolify de casa (teste e apresentação) | Postgres, coletor, painel e backup; usa um broker que já existe, com o login único dele | [`.env.home.example`](.env.home.example) |
+
+As estações falam MQTT na porta 1883, sem TLS (decisões registradas no design, §3.10).
 
 Passo a passo, backup e restauração: [`docs/deploy.md`](docs/deploy.md).
 
@@ -88,8 +95,9 @@ firmware/        # D1 mini (PlatformIO, C++): medição, perfis de energia, MQTT
 infra/           # compose de desenvolvimento e de ensaio, Mosquitto e backup
 scripts/         # bundle dos servidores para as imagens de produção
 docs/            # design, plano e guias (hardware.md, calibracao.md, deploy.md)
-Dockerfile           # imagens do coletor e do painel (alvos collector e dashboard)
-docker-compose.yaml  # produção (Coolify)
+Dockerfile                # imagens do coletor e do painel (alvos collector e dashboard)
+docker-compose.yaml       # produção na VPS (Coolify)
+docker-compose.home.yaml  # Coolify de casa, com o broker que já existe
 ```
 
 ## Dashboard

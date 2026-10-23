@@ -1,43 +1,50 @@
 # Deploy
 
-A produção é um único `docker-compose.yaml`, na raiz do repositório, feito para o recurso **Docker Compose** do Coolify:
+São dois composes na raiz do repositório, os dois feitos para o recurso **Docker Compose** do Coolify:
 
-| Serviço | O que faz | Acesso de fora |
-|---|---|---|
-| `postgres` | Banco (PostgreSQL 18) | nenhum |
-| `mosquitto` | Broker MQTT, com um login por estação (Dynamic Security) | porta 1883 do servidor, para as estações |
-| `collector` | App 1: grava no banco tudo o que as estações publicam | nenhum |
-| `dashboard` | App 2: API e painel web | pelo proxy do Coolify, com HTTPS |
-| `backup` | Backup diário do banco e dos logins do broker | nenhum |
+| Compose | Onde | Broker | Login das estações |
+|---|---|---|---|
+| `docker-compose.yaml` | **VPS da Hostinger** (produção definitiva) | Mosquitto próprio, publicado na porta 1883 | Um login por estação, criado pelo painel |
+| `docker-compose.home.yaml` | **Coolify de casa** (teste e apresentação) | O broker de produção que já roda no Coolify | O login único desse broker, igual para todas |
 
-O mesmo compose atende dois cenários:
+| Serviço | O que faz | VPS | Casa |
+|---|---|---|---|
+| Banco | PostgreSQL 18 | `postgres` | `wx-postgres` |
+| Broker | Mosquitto com Dynamic Security | `mosquitto` | — (usa o de produção) |
+| Coletor | App 1: grava no banco tudo o que as estações publicam | `collector` | `wx-collector` |
+| Painel | App 2: API e painel web, atrás do proxy do Coolify | `dashboard` | `wx-dashboard` |
+| Backup | Backup diário do banco (e, na VPS, dos logins do broker) | `backup` | `wx-backup` |
 
-- **Produção:** VPS da Hostinger com Coolify e IP fixo.
-- **Teste e apresentação:** o Coolify de casa, com o painel pelo Cloudflare Tunnel e o MQTT por port forward.
+Em casa, os serviços levam o prefixo `wx-` porque o coletor e o painel entram na rede `coolify`, compartilhada por outras stacks.
 
-> **O MQTT fica sem TLS.** As estações usam a porta 1883 sem criptografia, por decisão de 2026-10-23 (design §3.10). O usuário e a senha de cada estação e as leituras passam abertos pela internet. Quem capturar a senha de uma estação só consegue publicar como ela e ler a configuração dela. Os logins `admin` e `collector` nunca saem do servidor. Se a senha de uma estação vazar, gere outra no painel, na aba **Credenciais** da estação. O firmware já sabe usar TLS: para ligar depois, o broker precisa de um certificado (design §13).
+> **MQTT sem TLS.** Nos dois composes, as estações usam a porta 1883 sem criptografia (decisão de 2026-10-23, design §3.10). O usuário, a senha e as leituras passam abertos pela internet.
+> - **Na VPS**, cada estação tem login próprio, preso aos tópicos dela. Se uma senha vazar, gere outra no painel, na aba **Credenciais** da estação.
+> - **Em casa**, todas as estações usam o login único do broker de produção, o mesmo dos outros dispositivos da casa. Quem capturar essa senha tem acesso total ao broker. Uma estação pode publicar como outra, e o painel não consegue bloquear uma estação no broker. Se a senha vazar, troque-a no broker e configure de novo as estações e os demais dispositivos.
 
 ## 1. Variáveis
 
-O modelo comentado é o [`.env.production.example`](../.env.production.example). Gere cada senha com `openssl rand -hex 24`.
+Os modelos comentados são o [`.env.production.example`](../.env.production.example) (VPS) e o [`.env.home.example`](../.env.home.example) (casa). Gere as senhas com `openssl rand -hex 24`.
 
-| Variável | Obrigatória | Para quê |
-|---|---|---|
-| `POSTGRES_PASSWORD` | sim | Senha do banco. Use só letras e números, porque ela entra na URL de conexão |
-| `MOSQUITTO_DYNSEC_PASSWORD` | sim | Login `admin` do broker, usado pelo painel (mínimo de 12 caracteres) |
-| `MQTT_COLLECTOR_PASSWORD` | sim | Login `collector` do broker, criado pelo painel ao subir |
-| `APP_URL` | sim | Endereço do painel como o navegador o abre, com `https://` |
-| `ADMIN_EMAIL`, `ADMIN_PASSWORD` | sim | Primeiro administrador, criado só com o banco vazio (senha de 10 caracteres ou mais) |
-| `PUBLIC_MQTT_HOST` | sim | Endereço do broker para as estações; aparece no painel ao cadastrar uma estação |
-| `PUBLIC_MQTT_PORT` | não (1883) | Porta que as estações usam |
-| `MQTT_HOST_PORT` | não (1883) | Porta publicada no servidor |
-| `ADMIN_NAME`, `LOG_LEVEL` | não | Nome do primeiro administrador e nível dos logs |
-| `BACKUP_TZ`, `BACKUP_HOUR` | não | Fuso (`America/Sao_Paulo`) e hora (3) do backup diário |
+| Variável | VPS | Casa | Para quê |
+|---|---|---|---|
+| `POSTGRES_PASSWORD` | sim | sim | Senha do banco. Use só letras e números, porque ela entra na URL de conexão |
+| `MOSQUITTO_DYNSEC_PASSWORD` | sim | — | Login `admin` do broker próprio, usado pelo painel (mínimo de 12 caracteres) |
+| `MQTT_COLLECTOR_PASSWORD` | sim | — | Login `collector` do broker próprio, criado pelo painel ao subir |
+| `MQTT_USERNAME`, `MQTT_PASSWORD` | — | sim | Login único do broker de produção (`SERVICE_USER_MOSQUITTO` e `SERVICE_PASSWORD_MOSQUITTO` do serviço dele no Coolify) |
+| `MQTT_URL` | — | não (`mqtt://mosquitto:1883`) | Como o coletor e o painel chegam ao broker de produção |
+| `APP_URL` | sim | sim | Endereço do painel como o navegador o abre, com `https://` |
+| `ADMIN_EMAIL`, `ADMIN_PASSWORD` | sim | sim | Primeiro administrador, criado só com o banco vazio (senha de 10 caracteres ou mais) |
+| `PUBLIC_MQTT_HOST` | sim | sim | Endereço do broker para as estações; aparece no painel ao cadastrar uma estação |
+| `PUBLIC_MQTT_PORT` | não (1883) | não (1883) | Porta que as estações usam |
+| `MQTT_HOST_PORT` | não (1883) | — | Porta publicada no servidor |
+| `ADMIN_NAME`, `LOG_LEVEL` | não | não | Nome do primeiro administrador e nível dos logs |
+| `BACKUP_TZ`, `BACKUP_HOUR` | não | não | Fuso (`America/Sao_Paulo`) e hora (3) do backup diário |
 
 Guarde as senhas num gerenciador de senhas:
 
 - `POSTGRES_PASSWORD` e `MOSQUITTO_DYNSEC_PASSWORD` só valem na primeira subida, quando o banco e o broker são criados. Mudar a variável depois não muda a senha lá dentro e deixa os apps sem acesso.
 - `MQTT_COLLECTOR_PASSWORD` pode mudar: o painel reaplica a senha toda vez que sobe.
+- Em casa, `MQTT_USERNAME` e `MQTT_PASSWORD` acompanham o broker de produção: se a senha dele mudar, atualize as duas aqui e configure de novo as estações.
 
 ## 2. Produção: VPS da Hostinger com Coolify
 
@@ -59,33 +66,41 @@ Guarde as senhas num gerenciador de senhas:
 7. **Primeiro acesso.** Abra o painel, entre com `ADMIN_EMAIL` e `ADMIN_PASSWORD` e troque a senha em **Meu perfil**.
 8. **Estações.** Cadastre cada estação no painel.
    - As credenciais aparecem uma única vez: servidor, porta 1883, TLS desligado, código e senha.
-   - Leve-as ao D1 mini pelo portal Wi-Fi ou pela página da estação na rede local (veja o [guia de hardware](hardware.md)).
+   - No D1 mini, o **Usuário MQTT** fica em branco: o usuário é o código da estação.
+   - Leve os dados ao D1 mini pelo portal Wi-Fi ou pela página da estação na rede local (veja o [guia de hardware](hardware.md)).
 
-## 3. Teste e apresentação: Coolify em casa
+## 3. Teste e apresentação: Coolify de casa
 
-O procedimento é o mesmo da VPS, com três diferenças:
+Aqui não sobe broker: o coletor e o painel usam o broker de produção que já roda no mesmo Coolify. Ele atende como `mosquitto` na rede `coolify`, com um único login para todo mundo.
 
-- **Painel pelo Cloudflare Tunnel.**
-  - Como nos outros apps de casa, o túnel leva o endereço do painel até o proxy do Coolify (`http://localhost:80`).
-  - No Coolify, o domínio continua `https://…:3000`.
-  - O redirecionamento de HTTP para HTTPS fica desligado, porque o túnel chega por HTTP.
-- **MQTT por port forward.**
-  - O roteador encaminha a porta externa para a `MQTT_HOST_PORT` do servidor.
-  - Se a 1883 já estiver em uso no servidor (por outro broker), escolha outra: por exemplo, `MQTT_HOST_PORT=1884` e `PUBLIC_MQTT_PORT=1884`, com o port forward de 1884 para 1884.
-- **Endereço do broker.**
-  - Use um registro "DNS only" apontando para o IP de casa (se o IP muda, um DDNS mantém o registro em dia) ou o próprio IP em `PUBLIC_MQTT_HOST`.
-  - Se o IP WAN do roteador for diferente do IP que sites como `ifconfig.me` mostram, a internet de casa está atrás de CGNAT, e o port forward não funciona. Nesse caso, use a VPS.
+1. **Recurso no Coolify.** Como na VPS, mas com Docker Compose Location `/docker-compose.home.yaml`. Deixe desligada a opção "Connect to Predefined Network": o compose já põe o coletor e o painel na rede `coolify`.
+2. **Variáveis** (modelo em `.env.home.example`).
+   - `MQTT_USERNAME` e `MQTT_PASSWORD`: os valores de `SERVICE_USER_MOSQUITTO` e `SERVICE_PASSWORD_MOSQUITTO` do serviço do broker.
+   - `PUBLIC_MQTT_HOST`: o nome do DDNS de casa. `PUBLIC_MQTT_PORT`: a porta que o roteador encaminha (normalmente 1883).
+3. **Painel pelo Cloudflare Tunnel.** Como nos outros apps de casa, o túnel leva o endereço do painel até o proxy do Coolify (`http://localhost:80`). No serviço `wx-dashboard`, o domínio é `https://estacao.seudominio.com.br:3000`, e o redirecionamento de HTTP para HTTPS fica desligado, porque o túnel chega por HTTP.
+4. **MQTT pela internet.**
+   - No pfSense, crie o port forward na WAN que aceita conexões de entrada (a da TIM; a outra está atrás de CGNAT) levando a porta até o IP do servidor, porta 1883.
+   - O DDNS precisa seguir o IP dessa WAN.
+   - Estações **dentro de casa** que usam o nome do DDNS precisam de NAT reflection no pfSense, ou de um Host Override no DNS Resolver apontando o nome para o IP do servidor na LAN. Sem isso, elas não conectam de dentro.
+5. **Deploy.** Os quatro serviços sobem, e três ficam saudáveis (o `wx-backup` não tem verificação de saúde). O coletor conecta de primeira, porque o login já existe no broker.
+6. **Estações.** Cadastre cada estação no painel. Nesse modo:
+   - não há senha por estação. No D1 mini, use o servidor e a porta do cadastro, TLS desligado, o código da estação, o **Usuário MQTT** do broker e a senha do broker;
+   - **Desativar** não bloqueia a estação no broker: ela continua conectada, e o coletor ignora o que ela enviar;
+   - **Excluir** apaga a estação do banco e limpa as mensagens retidas dela no broker;
+   - a aba **Credenciais** não gera senha nova: a senha só muda no broker.
+
+O broker de produção usa os limites padrão do Mosquitto. Se o coletor ficar fora do ar, o broker guarda até 1.000 mensagens para ele. Com 4 estações enviando uma leitura por minuto, isso dá umas 4 horas; acima disso, as mais antigas se perdem.
 
 ### Passar de casa para a VPS
 
-Há dois caminhos:
+Na VPS tudo é novo: o compose `docker-compose.yaml`, com broker próprio e um login por estação.
 
-- **Do zero.** Suba a stack na VPS, cadastre as estações de novo e reconfigure cada D1 mini com o servidor e a senha novos.
-- **Levando os dados.**
-  1. Em casa, faça um backup (`backup.sh now`, seção 5) e copie para fora do servidor os dois arquivos do dia: o `.dump` e o `.json`.
-  2. Suba a stack na VPS com a mesma `MOSQUITTO_DYNSEC_PASSWORD` de casa.
-  3. Copie o `.dump` para o container `backup` da VPS (`docker cp weather-AAAA-MM-DD.dump <container-backup>:/backups/`) e restaure o banco e os logins do broker (seção 5).
-  4. Nas estações, troque só o servidor (e a porta, se mudou) pela página local. As senhas continuam as mesmas.
+1. Suba a stack na VPS (seção 2) e cadastre as estações lá.
+2. Em cada D1 mini, troque o servidor pelo da VPS, deixe o **Usuário MQTT** em branco e use a senha que o cadastro mostrou.
+3. Para levar o histórico de casa, restaure o backup do banco de casa na VPS (seção 5), em vez de cadastrar de novo.
+   - As estações chegam sem login no broker da VPS.
+   - Gere uma senha nova para cada uma na aba **Credenciais** e leve-a ao D1 mini.
+   - Os usuários do painel também vêm de casa: entre com a senha que você usava lá.
 
 ## 4. Atualizações
 
@@ -95,14 +110,14 @@ Há dois caminhos:
 
 ## 5. Backup e restauração
 
-Todo dia, na hora `BACKUP_HOUR` do fuso `BACKUP_TZ`, o serviço `backup` grava no volume `backups`:
+Todo dia, na hora `BACKUP_HOUR` do fuso `BACKUP_TZ`, o serviço de backup grava no volume `backups`:
 
 - `daily/weather-AAAA-MM-DD.dump`: o banco inteiro (`pg_dump` no formato custom);
-- `daily/mosquitto-AAAA-MM-DD.json`: os logins do broker (arquivo do Dynamic Security).
+- `daily/mosquitto-AAAA-MM-DD.json`: só na VPS, os logins do broker (arquivo do Dynamic Security). Em casa, o broker é de outra stack e tem os próprios backups.
 
 Ficam 14 cópias diárias e 8 semanais (em `weekly/`, as de domingo). Se o serviço sobe depois da hora marcada e ainda não houve backup no dia, ele faz um na hora.
 
-No terminal do container `backup` (pelo Coolify, ou com `docker exec -it <container> sh` no servidor):
+No terminal do container de backup (pelo Coolify, ou com `docker exec -it <container> sh` no servidor):
 
 | Comando | O que faz |
 |---|---|
@@ -124,16 +139,17 @@ Depois, baixe a pasta com `scp`. Os snapshots da VPS da Hostinger são uma camad
 
 ### Restaurar o banco
 
-1. Pare o coletor e o painel: `docker stop <container-collector> <container-dashboard>`.
-2. No container `backup`, rode `restore.sh /backups/daily/weather-AAAA-MM-DD.dump` e digite o nome do banco (`weather`) para confirmar.
+1. Pare o coletor e o painel: `docker stop <container-coletor> <container-painel>`.
+2. Se o backup veio de outro servidor, copie-o para o container de backup: `docker cp weather-AAAA-MM-DD.dump <container-backup>:/backups/`.
+3. No container de backup, rode `restore.sh /backups/daily/weather-AAAA-MM-DD.dump` (ou o caminho do passo 2) e digite o nome do banco (`weather`) para confirmar.
    - O script restaura num banco novo e só então troca os nomes. O banco atual fica guardado como `weather_before_restore_<data>`.
    - Se o coletor ou o painel ainda estiverem conectados, a troca é recusada e nada muda.
-3. Suba os dois de novo (`docker start …` ou Redeploy) e confira o painel.
-4. Quando estiver tudo certo, apague o banco anterior com o comando que o script mostrou no fim.
+4. Suba os dois de novo (`docker start …` ou Redeploy) e confira o painel.
+5. Quando estiver tudo certo, apague o banco anterior com o comando que o script mostrou no fim.
 
-### Restaurar os logins do broker
+### Restaurar os logins do broker (VPS)
 
-Só é preciso se o volume do broker se perdeu ou na mudança de servidor. A `MOSQUITTO_DYNSEC_PASSWORD` tem que ser a mesma de quando o backup foi feito. No servidor:
+Só é preciso se o volume do broker se perdeu ou na mudança de uma VPS para outra. A `MOSQUITTO_DYNSEC_PASSWORD` tem que ser a mesma de quando o backup foi feito. No servidor:
 
 ```bash
 docker cp <container-backup>:/backups/daily/mosquitto-AAAA-MM-DD.json .
@@ -149,26 +165,38 @@ As estações voltam a conectar com as senhas que já tinham.
 | Sintoma | O que conferir |
 |---|---|
 | A estação não conecta (`erro -3` no monitor serial) | A porta está liberada no firewall ou no roteador? O registro do broker está com a nuvem cinza? No D1 mini, a porta é a de `PUBLIC_MQTT_PORT`, com o TLS desligado? |
+| Em casa, só as estações de dentro de casa não conectam | Falta NAT reflection no pfSense, ou um Host Override do nome do DDNS para o IP do servidor na LAN |
+| A estação conecta, mas o log mostra `código 5` (login recusado) | Na VPS, o **Usuário MQTT** tem que ficar em branco. Em casa, ele é o usuário do broker, com a senha do broker |
 | O login mostra "Requisição recusada por segurança" | A `APP_URL` tem que ser exatamente o endereço aberto no navegador, com `https://` |
-| O painel não atualiza sozinho | O tempo real usa SSE (`/api/v1/stream`), que não pode ficar retido no proxy. Recarregue a página e veja os logs do `dashboard` |
-| `collector` não saudável | O heartbeat dele não está chegando ao banco: veja os logs do `collector` e do `postgres` |
+| O painel não atualiza sozinho | O tempo real usa SSE (`/api/v1/stream`), que não pode ficar retido no proxy. Recarregue a página e veja os logs do painel |
+| Coletor não saudável | O heartbeat dele não está chegando ao banco: veja os logs do coletor e do banco |
 | O deploy não começa | Falta alguma variável obrigatória (o Coolify destaca as vazias) |
 
 Para conferir a API: `https://estacao.seudominio.com.br/healthz` responde `{"ok":true,"broker":true}` quando a API, o banco e o broker estão bem.
 
 ## 7. Ensaio local
 
-Para testar a produção numa máquina de desenvolvimento, sem o Coolify:
+Os dois composes podem ser testados numa máquina de desenvolvimento, sem o Coolify. O painel abre em <http://localhost:3400> e o broker atende em `127.0.0.1:1884`, sem conflito com o ambiente de desenvolvimento.
 
-1. Crie o `.env.rehearsal` a partir do `.env.production.example` (o git ignora o arquivo) com:
-   - `APP_URL=http://localhost:3400`;
-   - `MQTT_HOST_PORT=127.0.0.1:1884` e `PUBLIC_MQTT_PORT=1884`;
-   - `PUBLIC_MQTT_HOST=localhost`.
-2. Suba a stack:
+**VPS** (`docker-compose.yaml`):
+
+1. Crie o `.env.rehearsal` a partir do `.env.production.example` (o git ignora o arquivo) com `APP_URL=http://localhost:3400`, `MQTT_HOST_PORT=127.0.0.1:1884`, `PUBLIC_MQTT_PORT=1884` e `PUBLIC_MQTT_HOST=localhost`.
+2. Suba e, no fim, apague tudo:
 
    ```bash
    docker compose -p wx-rehearsal --env-file .env.rehearsal -f docker-compose.yaml \
      -f infra/compose.rehearsal.yml up -d --build --wait
+   docker compose -p wx-rehearsal down -v
    ```
 
-O painel abre em <http://localhost:3400> e o broker atende em `127.0.0.1:1884`, sem conflito com o ambiente de desenvolvimento. `docker compose -p wx-rehearsal down -v` apaga tudo o que o ensaio criou.
+**Casa** (`docker-compose.home.yaml`): o ensaio sobe um broker configurado como o de produção (login único, sem ACL).
+
+1. Crie o `.env.home-rehearsal` a partir do `.env.home.example`, com qualquer usuário e senha em `MQTT_USERNAME` e `MQTT_PASSWORD` e `APP_URL=http://localhost:3400`.
+2. A rede `coolify` existe em todo servidor do Coolify. Na máquina de desenvolvimento, crie uma e apague no fim:
+
+   ```bash
+   docker network create coolify
+   docker compose -p wx-home-rehearsal --env-file .env.home-rehearsal -f docker-compose.home.yaml \
+     -f infra/compose.home-rehearsal.yml up -d --build --wait
+   docker compose -p wx-home-rehearsal down -v && docker network rm coolify
+   ```

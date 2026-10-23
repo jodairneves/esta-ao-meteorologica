@@ -33,8 +33,9 @@ Sistema para acompanhar estações meteorológicas DIY:
 |---|---|
 | Firmware | Próprio, em C++ (PlatformIO/Arduino) |
 | Energia | Apenas D1 mini e sensores, bateria de lítio e talvez um painel solar pequeno. Sem contador externo: o firmware fica acordado e economiza energia com perfis automáticos |
-| Produção | VPS da Hostinger com Coolify e IP fixo. Para teste e apresentação, o Coolify de casa, com o painel pelo Cloudflare Tunnel e o MQTT por port forward (2026-10-23) |
+| Produção | VPS da Hostinger com Coolify e IP fixo, toda nova (broker próprio, um login por estação). Para teste e apresentação, o Coolify de casa: painel pelo Cloudflare Tunnel e o broker de produção do usuário, com o login único dele, alcançado pelas estações por DDNS e port forward (2026-10-23) |
 | MQTT na internet | Porta 1883 sem TLS, decisão do usuário em 2026-10-23 (risco na §3.10). O firmware continua pronto para TLS na 8883 |
+| Login MQTT | Um por estação na VPS; em casa, o login único do broker do usuário, que ele não quer alterar (§3.10) |
 | Visual | Tema próprio meteorológico (escuro/futurista) |
 | Arquitetura | Abordagem A: o banco de dados é o ponto de integração entre os apps |
 | Versões da estação | O cadastro define a versão (`climate_sensor`: `bme280` ou `htu21d`). Um único firmware detecta qual sensor está ligado e avisa se não bater com o cadastro. O contrato MQTT continua na v1 |
@@ -277,21 +278,19 @@ Broker com `persistence true` e fila por cliente ampliada (`max_queued_messages`
 
 ### 3.10 Segurança
 
-- **Listener 1883 sem TLS, publicado no servidor:** é a única porta do broker exposta na internet.
-  - **Decisão do usuário (2026-10-23):** o MQTT fica sem TLS também na produção.
-  - O design original previa TLS 1.2+ na 8883, com certificado Let's Encrypt, e a 1883 só na rede interna do Docker.
-- **Risco aceito:** o usuário e a senha de cada estação, a configuração enviada a ela (inclusive a senha da página local) e as leituras passam abertos pela internet. O alcance de quem os capturar é limitado:
-  - com a credencial de uma estação, só dá para publicar como ela e ler a configuração dela (ACL abaixo);
-  - a página local só abre de dentro da rede da estação;
-  - os logins `admin` e `collector` nunca saem da rede interna do Docker.
-- **Mitigações:**
-  - senha aleatória de 24 caracteres por estação, que o painel troca a qualquer momento;
-  - `max_packet_size` de 64 KB no broker;
-  - registro de cada conexão no log do broker.
+**Transporte.** As estações falam MQTT na porta 1883, sem TLS, nos dois composes (§9).
+
+- **Decisão do usuário (2026-10-23):** o MQTT fica sem TLS também na produção. O design original previa TLS 1.2+ na 8883, com certificado Let's Encrypt, e a 1883 só na rede interna do Docker.
 - **Para ligar o TLS depois** (§13):
   - o firmware já tem as raízes ISRG e o BearSSL com Max Fragment Length;
   - no broker, falta um listener 8883 com certificado (lego, pelo desafio DNS-01 da Cloudflare);
   - em cada estação, basta trocar a porta e ligar o TLS no portal ou na página local.
+- **Com o TLS ligado, a estação valida o certificado** do servidor pelas raízes ISRG Root X1 e X2 embarcadas e sincroniza o relógio por NTP antes do TLS.
+
+**Login.** O painel trabalha em um de dois modos (`MQTT_AUTH_MODE`), e o firmware atende os dois: o campo "Usuário MQTT" vazio usa o código da estação.
+
+#### Um login por estação (`per-station`: VPS, desenvolvimento e testes)
+
 - **Dynamic Security**, com ACL padrão negando publicação e assinatura:
 
 | Papel | Permissões |
@@ -302,7 +301,32 @@ Broker com `persistence true` e fila por cliente ampliada (`max_queued_messages`
 
 - O cliente `admin` é criado pelo próprio Mosquitto no primeiro start, com a senha de `MOSQUITTO_DYNSEC_PASSWORD`. O Dashboard usa esse cliente e, ao iniciar, garante de forma idempotente os papéis, o papel `dashboard-ops` do `admin` e o cliente `collector` (o pacote `mqtt-admin` também expõe isso como comando de linha para o desenvolvimento).
 - **Credencial da estação:** senha aleatória de 24 caracteres gerada pelo Dashboard, aplicada no Mosquitto e exibida **uma única vez**; pode ser rotacionada a qualquer momento. Estação desativada tem o cliente MQTT desabilitado; estação excluída tem o cliente removido e os tópicos retidos limpos.
-- **Com o TLS ligado, a estação valida o certificado** do servidor pelas raízes ISRG Root X1 e X2 embarcadas e sincroniza o relógio por NTP antes do TLS.
+- **Risco aceito (sem TLS):** o usuário e a senha de cada estação, a configuração enviada a ela (inclusive a senha da página local) e as leituras passam abertos pela internet. O alcance de quem os capturar é limitado:
+  - com a credencial de uma estação, só dá para publicar como ela e ler a configuração dela (ACL acima);
+  - a página local só abre de dentro da rede da estação;
+  - os logins `admin` e `collector` nunca saem da rede interna do Docker.
+- **Mitigações:** senha aleatória por estação, trocada pelo painel a qualquer momento; `max_packet_size` de 64 KB no broker; registro de cada conexão no log do broker.
+
+#### Login único de um broker compartilhado (`shared`: compose de casa)
+
+**Decisão do usuário (2026-10-23):** em casa, o sistema usa o broker de produção que já atende os outros dispositivos dele, sem alterá-lo. Esse Mosquitto tem um `password_file` com um único usuário e nenhuma ACL. As estações chegam a ele pela internet, pelo DDNS de casa e por um port forward da 1883 no pfSense.
+
+- Estações, coletor e painel entram todos com esse login único. O coletor usa o client id `wx-collector`, para não colidir com outros clientes do broker.
+- O painel não cria nem troca logins:
+  - o cadastro mostra o usuário do broker, e a senha não fica no painel;
+  - não existe "nova senha";
+  - desativar faz o coletor ignorar os dados da estação, sem bloqueá-la no broker;
+  - excluir limpa as mensagens retidas da estação.
+- O `$SYS` é opcional: se o broker o negar, o status do sistema só mostra menos.
+- **Risco aceito:**
+  - a senha do broker atravessa a internet sem TLS e fica gravada em cada estação, que fica no campo. Quem a obtiver controla o broker inteiro, inclusive os outros dispositivos da casa;
+  - uma estação pode publicar como outra;
+  - o painel não consegue bloquear uma estação no broker.
+- **Alternativa testada e não adotada** (exigiria mudar o broker; §13):
+  - Ligar só o Dynamic Security tira o acesso do usuário do `password_file`, porque as ACLs do plugin passam a valer para todos os clientes.
+  - Com um `acl_file` dando a esse usuário o acesso de hoje (`#` e `$SYS`), ele mantém tudo, e as estações ganham login próprio, presas aos próprios tópicos.
+  - Nesse arranjo, os papéis também precisam negar a entrega por padrão (`publishClientReceive`). Sem isso, uma estação que assina `#` recebe mensagens dos outros sistemas, porque o `acl_file` libera a assinatura.
+  - Verificado em 20 casos contra uma cópia local do broker, rodando o bootstrap real do painel.
 
 ---
 
@@ -798,7 +822,14 @@ Status da estação na interface: **Online** (verde), **Dormindo** (neutro, com 
 
 Guia passo a passo: [`docs/deploy.md`](../../deploy.md).
 
-### 9.1 Serviços (`docker-compose.yaml`, na raiz)
+### 9.1 Serviços
+
+Dois composes na raiz:
+
+- `docker-compose.yaml`, para a VPS: tem broker próprio, com um login por estação;
+- `docker-compose.home.yaml`, para o Coolify de casa: sem broker, usa o broker de produção do usuário com o login único dele (§3.10).
+
+Serviços do `docker-compose.yaml`:
 
 | Serviço | Imagem | Portas | Volumes |
 |---|---|---|---|
@@ -821,6 +852,11 @@ Guia passo a passo: [`docs/deploy.md`](../../deploy.md).
 - **Ordem de subida:** os apps esperam o Postgres saudável e insistem no broker. O coletor tenta de novo enquanto o login dele não existe, porque quem o cria é o painel, ao subir.
 - **Logs** em JSON no stdout, com rotação (10 MB × 5 por serviço).
 
+O `docker-compose.home.yaml` tem `wx-postgres`, `wx-collector`, `wx-dashboard` e `wx-backup`, com as mesmas imagens:
+
+- o coletor e o painel entram também na rede externa `coolify`, onde o broker de produção atende como `mosquitto`;
+- o prefixo `wx-` evita colisão de nomes com as outras stacks dessa rede.
+
 ### 9.2 Produção: VPS da Hostinger com Coolify
 
 - Recurso **Docker Compose** apontando para o repositório. As variáveis ficam no Coolify; as obrigatórias (`${VAR:?}`) bloqueiam o deploy enquanto estão vazias.
@@ -829,10 +865,13 @@ Guia passo a passo: [`docs/deploy.md`](../../deploy.md).
 
 ### 9.3 Teste e apresentação: Coolify em casa
 
-- O compose é o mesmo. O painel sai pelo Cloudflare Tunnel que já atende os outros apps (do túnel para o proxy do Coolify).
-- MQTT por port forward. Se a 1883 já estiver ocupada no servidor, `MQTT_HOST_PORT` publica em outra porta, e `PUBLIC_MQTT_PORT` informa a porta às estações.
-- ⚠️ CGNAT: se o IP WAN do roteador for diferente do IP público visto na internet, o port forward não funciona. A alternativa é a VPS.
-- A mudança para a VPS pode levar os dados: o backup do banco e dos logins do broker, com a mesma `MOSQUITTO_DYNSEC_PASSWORD`. As estações só trocam o servidor.
+- `docker-compose.home.yaml`, sem broker próprio:
+  - o coletor e o painel usam `mqtt://mosquitto:1883` pela rede `coolify`, com o login único do broker de produção;
+  - o painel roda com `MQTT_AUTH_MODE=shared`.
+- O painel sai pelo Cloudflare Tunnel que já atende os outros apps (do túnel para o proxy do Coolify).
+- **Estações pela internet:** DDNS de casa e port forward da 1883 no pfSense, na WAN que aceita conexões de entrada (a outra está atrás de CGNAT). De dentro de casa, o nome do DDNS precisa de NAT reflection ou de um Host Override no DNS do pfSense.
+- **Limite do broker de produção:** ele usa o `max_queued_messages` padrão (1.000). Com o coletor fora do ar por horas, as leituras mais antigas da fila se perdem.
+- **Mudança para a VPS:** lá tudo é novo, com login por estação. O histórico pode ir pelo backup do banco; as estações recebem senhas novas e deixam o "Usuário MQTT" em branco.
 
 ### 9.4 Certificados
 
@@ -845,7 +884,7 @@ Saíram do escopo, em relação ao design original:
 
 ### 9.5 Backup
 
-- O serviço `backup` faz um `pg_dump` (formato custom) por dia, na hora `BACKUP_HOUR` do fuso `BACKUP_TZ`, e copia junto o arquivo de logins do broker. Se ele sobe depois da hora e ainda não houve backup no dia, faz um na hora.
+- O serviço de backup faz um `pg_dump` (formato custom) por dia, na hora `BACKUP_HOUR` do fuso `BACKUP_TZ`. Na VPS, copia junto o arquivo de logins do broker; em casa, o broker é de outra stack (`BROKER_FILE` vazio). Se o serviço sobe depois da hora e ainda não houve backup no dia, faz um na hora.
 - Guarda 14 cópias diárias e 8 semanais (de domingo) no volume `backups`. `backup.sh now` faz um backup imediato.
 - **Restauração** (`restore.sh`): restaura num banco novo e troca os nomes numa transação.
   - O banco atual fica guardado como `weather_before_restore_<data>`.
@@ -859,14 +898,15 @@ Saíram do escopo, em relação ao design original:
 | `POSTGRES_PASSWORD` | Banco (o compose monta a URL de conexão) |
 | `MOSQUITTO_DYNSEC_PASSWORD` | Senha do cliente `admin` do Mosquitto (usada pelo Dashboard); mínimo de 12 caracteres, exigência do Mosquitto 2.1 |
 | `MQTT_COLLECTOR_PASSWORD` | Senha do cliente `collector` |
+| `MQTT_USERNAME`, `MQTT_PASSWORD`, `MQTT_URL` | Só em casa: login único e endereço do broker de produção |
 | `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `ADMIN_NAME` | Primeiro admin (só usado se não houver usuários) |
 | `APP_URL` | URL pública do painel (cookies e conferência de `Origin`) |
 | `PUBLIC_MQTT_HOST`, `PUBLIC_MQTT_PORT` | Exibidos nas instruções de configuração da estação (o compose fixa `PUBLIC_MQTT_TLS=false`) |
-| `MQTT_HOST_PORT` | Porta publicada no servidor para as estações |
+| `MQTT_HOST_PORT` | Só na VPS: porta publicada no servidor para as estações |
 | `BACKUP_TZ`, `BACKUP_HOUR` | Fuso e hora do backup diário |
 | `LOG_LEVEL` | Nível de log dos apps |
 
-O `.env.production.example` documenta todas; o `.env.example` é o de desenvolvimento.
+O `.env.production.example` (VPS) e o `.env.home.example` (casa) documentam todas; o `.env.example` é o de desenvolvimento.
 
 ### 9.7 Desenvolvimento
 
@@ -904,7 +944,7 @@ Testes de integração usam o banco `weather_test` no Postgres do compose de des
 | 3 — API | Endpoints da §8.4, autenticação, permissões, SSE | Testes da API passam; estação criada pela API é usada pelo simulador |
 | 4 — Web | Telas da §8.7 | Fluxo completo com o simulador; Playwright passa; revisão visual |
 | 5 — Firmware | Firmware + guias de hardware e calibração | Testes nativos e build passam; em bancada, a estação real aparece no painel |
-| 6 — Deploy | Dockerfiles, compose de produção para o Coolify (VPS e casa), backup | Stack sobe do zero só com as variáveis; estação publica pela 1883 publicada; restauração do backup testada |
+| 6 — Deploy | Dockerfiles, composes da VPS (broker próprio) e de casa (broker do usuário), backup | Os dois composes sobem do zero só com as variáveis; estação publica pela 1883; restauração do backup testada |
 | 7 — Melhorias | Itens da §13, priorizados com o usuário | Definido por item |
 
 Cada fase termina com testes passando, `CLAUDE.md` atualizado e commit.
@@ -917,7 +957,8 @@ Cada fase termina com testes passando, `CLAUDE.md` atualizado e commit.
 |---|---|
 | RAM do ESP8266 com TLS | BearSSL com Max Fragment Length e buffers reduzidos; teste em bancada no início da Fase 5 |
 | CGNAT no servidor local | Verificação no guia; a VPS é a alternativa |
-| MQTT sem TLS na internet (decisão do usuário) | Credencial e ACL por estação, senhas aleatórias com rotação pelo painel, logins internos fora da internet, caminho para o TLS na §3.10 |
+| MQTT sem TLS na internet (decisão do usuário) | Na VPS: credencial e ACL por estação, senhas aleatórias com rotação pelo painel, logins internos fora da internet. Caminho para o TLS na §3.10 |
+| Login único do broker de casa (decisão do usuário) | Risco registrado na §3.10; a VPS volta ao login por estação. Alternativa testada para casa: `acl_file` + Dynamic Security no broker (§13) |
 | Basculadas falsas com o 49E | Reed switch ou DRV5032, mais debounce |
 | Calibração imprecisa | Fatores no servidor e guia (chuva: seringa com volume conhecido; vento: carro em dia calmo ou comparação com estação oficial) |
 | Autonomia da bateria | Perfis automáticos e alertas de bateria |
@@ -938,4 +979,5 @@ Cada fase termina com testes passando, `CLAUDE.md` atualizado e commit.
 - LoRa para estações fora do alcance do Wi-Fi.
 - MQTT via WebSocket pelo Cloudflare Tunnel (para servidores atrás de CGNAT).
 - TLS no MQTT (listener 8883 com certificado Let's Encrypt; o firmware já suporta).
+- Login por estação também no broker de casa: `acl_file` com o acesso atual do usuário único, plugin Dynamic Security e papéis que neguem a entrega por padrão (testado em 2026-10-23, §3.10).
 - TimescaleDB, se o volume crescer.

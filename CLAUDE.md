@@ -17,7 +17,9 @@ Sistema de monitoramento de estações meteorológicas DIY (Wemos D1 mini/ESP826
 - **Pacotes:** `packages/shared` (contrato MQTT em zod, domínio, fórmulas meteorológicas; roda no Node e no navegador), `packages/db` (esquema Drizzle, migrações, NOTIFY), `packages/mqtt-admin` (Dynamic Security do Mosquitto).
 - **Firmware** (`firmware/`): PlatformIO para D1 mini, com perfis de energia Normal/Economia/Sobrevivência. Guias em `docs/hardware.md` e `docs/calibracao.md`.
 - **Contrato MQTT v1:** `weather/v1/{code}/{telemetry|status|health|event|config|cmd}` (§3 do design).
-- **Produção:** `docker-compose.yaml` na raiz (Coolify), `Dockerfile` com os alvos `collector` e `dashboard`, `infra/mosquitto` e `infra/backup`; variáveis em `.env.production.example`.
+- **Produção:** `Dockerfile` com os alvos `collector` e `dashboard`, `infra/backup` e dois composes na raiz:
+  - `docker-compose.yaml` (VPS): com `infra/mosquitto`; variáveis em `.env.production.example`;
+  - `docker-compose.home.yaml` (Coolify de casa): sem broker, usa o broker de produção do usuário; variáveis em `.env.home.example`.
 
 ## Decisões que não devem ser revertidas sem conversar com o usuário
 
@@ -30,8 +32,10 @@ Sistema de monitoramento de estações meteorológicas DIY (Wemos D1 mini/ESP826
 - Perfis: `admin` (tudo) e `operator` (somente leitura, mais reconhecer alertas e exportar CSV).
 - Duas versões de estação: **completa** (BME280) e **HTU21D** (sem pressão nem altitude). A versão é definida no cadastro (`stations.climate_sensor`); um único firmware detecta o sensor ligado. O contrato MQTT continua na v1 (`pres: null` e `health.sensors.htu21d`).
 - O mapa usa o OpenFreeMap (gratuito, sem chave e sem garantia de funcionamento) e a altitude do cadastro usa o Open-Meteo (plano grátis só para uso não comercial). O usuário confirmou que o uso **não é comercial** (2026-10-23).
-- O MQTT exposto na internet fica na **1883 sem TLS** (decisão do usuário em 2026-10-23; risco registrado no design §3.10), com credencial própria por estação. O MQTT via WebSocket também foi recusado. O firmware continua pronto para TLS na 8883, mas só ligar se o usuário pedir.
-- Produção: o compose traz o Mosquitto do projeto (o broker que o usuário já tem não é usado).
+- O MQTT exposto na internet fica na **1883 sem TLS** (decisão do usuário em 2026-10-23; risco registrado no design §3.10). O MQTT via WebSocket também foi recusado. O firmware continua pronto para TLS na 8883, mas só ligar se o usuário pedir.
+- Login MQTT (decisão do usuário em 2026-10-23, design §3.10):
+  - **VPS:** tudo novo, com Mosquitto próprio e um login por estação (`MQTT_AUTH_MODE=per-station`, o padrão).
+  - **Casa:** o broker de produção do usuário, que **não deve ser alterado**, com o login único dele para estações, coletor e painel (`MQTT_AUTH_MODE=shared`). As estações chegam pelo DDNS de casa (`PUBLIC_MQTT_HOST`, definido no Coolify) e pelo port forward da 1883.
 - A estação serve uma página de configuração na rede local (servidor MQTT e Wi-Fi), pedido do usuário em 2026-10-23. A senha dela é gerada pelo painel, fica legível em `stations.local_password` (só admins, com auditoria) e vai para a estação na configuração retida.
 
 ## Convenções
@@ -67,6 +71,7 @@ Sistema de monitoramento de estações meteorológicas DIY (Wemos D1 mini/ESP826
 | `pnpm docs:manual` | Gera `docs/manual-de-ligacao.pdf` (manual de ligação dos sensores) a partir de `docs/manual-de-ligacao/gerar.mjs`, com o Chromium do Playwright |
 | `firmware/scripts/serial-log.py [--seconds N] [--portal]` | Log serial do D1 mini sem terminal interativo (bom para rodar em segundo plano); `--portal` abre o portal com reset duplo pelo USB |
 | `DEV_MQTT_BIND=0.0.0.0` no `.env` + `pnpm infra:up` | Expõe o Mosquitto de dev na rede local, só durante o teste em bancada |
+| `docker network create coolify` + `docker compose -p wx-home-rehearsal --env-file .env.home-rehearsal -f docker-compose.home.yaml -f infra/compose.home-rehearsal.yml up -d --build --wait` | Ensaio local do compose de casa, com um broker igual ao de produção do usuário; no fim, `down -v` e `docker network rm coolify` (`docs/deploy.md`, seção 7) |
 | `node scripts/bundle-server.mjs <collector\|dashboard>` | Bundle ESM do servidor, com um `package.json` das dependências que ficam fora (o `Dockerfile` usa) |
 | `docker compose -p wx-rehearsal --env-file .env.rehearsal -f docker-compose.yaml -f infra/compose.rehearsal.yml up -d --build --wait` | Ensaio local da produção: painel em `localhost:3400` e, com `MQTT_HOST_PORT=127.0.0.1:1884`, broker em `127.0.0.1:1884`; `down -v` apaga tudo (`docs/deploy.md`, seção 7) |
 
@@ -146,7 +151,18 @@ Sistema de monitoramento de estações meteorológicas DIY (Wemos D1 mini/ESP826
   - `ports:` publica direto no host; só o MQTT usa.
   - As configurações vão dentro das imagens (sem bind mount).
 - **Produção — senhas:** `POSTGRES_PASSWORD` e `MOSQUITTO_DYNSEC_PASSWORD` só valem quando o volume é criado (mudar a variável depois tira o acesso dos apps). A do `collector` o painel reaplica a cada start.
+- **Login compartilhado (`MQTT_AUTH_MODE=shared`):**
+  - O `BrokerAdmin` não cria `DynsecClient` nem roda o bootstrap. `provision`, `rotatePassword` e `setEnabled` lançam erro; os serviços checam `broker.login` antes.
+  - O `$SYS` é opcional: se o broker negar a assinatura, só fica um aviso no log.
+  - O firmware usa `mqttUsername(user, code)`: o campo "Usuário MQTT" vazio usa o código. Nos ensaios, a estação conecta com o login único e o client id `st-{código}`.
+- **Broker do usuário + Dynamic Security (testado em 2026-10-23, não adotado):**
+  - Carregar o plugin tira o acesso de quem entra pelo `password_file`, porque as ACLs do plugin valem para todos; nem o padrão "permitir" resolve.
+  - Com um `acl_file` dando ao usuário único `#` e `$SYS`, ele mantém tudo, e os logins do Dynamic Security ficam presos aos papéis.
+  - Mas o `acl_file` libera a assinatura de `#` para os outros clientes. Os papéis precisariam negar a entrega por padrão (`publishClientReceive`).
+  - Como testar de novo: suba uma cópia do broker (o mesmo heredoc do compose dele, numa porta local) e rode `pnpm --filter @wx/mqtt-admin bootstrap` contra ela, com `MQTT_URL` apontando para essa porta.
+- **Compose de casa:** os serviços levam o prefixo `wx-`, porque o coletor e o painel entram na rede `coolify`, compartilhada. O coletor usa o client id `wx-collector`, porque a sessão persistente dele fica no broker compartilhado.
 - **Backup (`infra/backup`):**
+  - `BROKER_FILE` vazio desliga a cópia dos logins do broker (compose de casa).
   - O `dynamic-security.json` é 0600 do usuário `mosquitto`, por isso o container de backup roda como root.
   - A restauração troca os bancos com `ALTER DATABASE … RENAME`, que falha com conexões abertas: é a trava contra restaurar com o coletor ou o painel ligados.
 - **Firmware — deep sleep na bancada:** sem o fio D0–RST a placa não acorda sozinha. O portal sem configuração dorme depois de 5 min; o botão RESET a traz de volta ao portal (o reset chega como "Deep-Sleep Wake").
@@ -159,12 +175,16 @@ Sistema de monitoramento de estações meteorológicas DIY (Wemos D1 mini/ESP826
 - **Fase 4 — Web:** concluída (2026-10-23), com o teste de ponta a ponta usando os dados fictícios do simulador.
 - **Fase 4.5 — Duas versões de estação (BME280 e HTU21D):** concluída (2026-10-23).
 - **Fase 5 — Firmware:** implementada (2026-10-23). Compila e passa nos testes nativos. Na bancada (2026-10-23), um D1 mini real ainda sem sensores, a estação `bancada`, configurado pelo portal, publica no ambiente de dev: online, leituras, diagnóstico e configuração remota aplicada. A página local também foi validada: troca de servidor mantida, senha gerada pelo painel aplicada, IP 10.25.50.111 no painel. Falta ligar os sensores (BME280 ou HTU21D, anemômetro, pluviômetro e o divisor da bateria). A memória com TLS só precisa ser medida se o TLS for ligado.
-- **Fase 6 — Deploy:** implementada e ensaiada localmente (2026-10-23). Falta o deploy de verdade, que o usuário faz: primeiro no Coolify de casa (teste e apresentação), depois na VPS da Hostinger. Painel em `estacao.jodairneves.dev.br`; o endereço do MQTT é configurado em cada estação.
+- **Fase 6 — Deploy:** implementada e ensaiada localmente (2026-10-23), com dois composes. Falta o deploy de verdade, que o usuário faz:
+  - primeiro no Coolify de casa (`docker-compose.home.yaml`, broker de produção do usuário, login único);
+  - depois na VPS da Hostinger (`docker-compose.yaml`, tudo novo).
+  - O painel fica em `estacao.jodairneves.dev.br`; as estações recebem o endereço do MQTT pelo portal ou pela página local.
+  - Falta medir de novo, na bancada, a memória do portal com o campo "Usuário MQTT".
 - O primeiro admin (`ADMIN_EMAIL`/`ADMIN_PASSWORD`) é criado pela API ao subir (hash argon2id).
 - **Hardware do usuário:** D1 mini, BME280, anemômetro e pluviômetro impressos em 3D (modelos MakerWorld), bateria de lítio e talvez um painel solar pequeno.
 - **Produção:**
   - Definitiva: VPS da Hostinger com Coolify e IP fixo.
-  - Teste e apresentação: o Coolify de casa, com o painel pelo Cloudflare Tunnel e o MQTT por port forward. Se a 1883 de casa continuar com o broker que o usuário já tem, o projeto usa outra porta lá (`MQTT_HOST_PORT`).
+  - Teste e apresentação: o Coolify de casa, com o painel pelo Cloudflare Tunnel. As estações usam o broker de produção do usuário (Mosquitto 2.1.2, `password_file` com um usuário, sem ACL), por DDNS e port forward da 1883 no pfSense. O guia do broker fica em `/home/jodair/Development/Mosquitto MQTT`.
 
 ## Registro de atualizações
 
@@ -392,3 +412,36 @@ Sistema de monitoramento de estações meteorológicas DIY (Wemos D1 mini/ESP826
   - Retenção 14/8 e reinício sem perda.
   - Mudança de servidor (casa → VPS) com banco e logins do broker: a estação conectou com a senha antiga.
 - **Testes:** 164 unitários e 60 de integração (novos: coletor insiste com login recusado; `/healthz` sem sessão).
+
+### 2026-10-23 — Fase 6: compose de casa com o broker do usuário
+- **Pedido do usuário:**
+  - em casa, usar o broker de produção que ele já tem, sem subir outro e sem alterá-lo (login único);
+  - as estações chegam pelo DDNS de casa, com port forward da 1883;
+  - na VPS, tudo novo.
+- **Investigação:** o broker dele tem só `password_file`, sem ACL. Numa cópia local, ligar o Dynamic Security tirava o acesso do usuário atual. Com um `acl_file`, daria para ter login por estação (20 casos), mas o usuário preferiu não mexer no broker.
+- **Painel:**
+  - `MQTT_AUTH_MODE` (`per-station`, o padrão, ou `shared`), validado por modo com zod.
+  - No modo `shared`:
+    - o cadastro devolve o usuário do broker e `password: null`;
+    - "nova senha" responde 409 (`SHARED_BROKER_LOGIN`);
+    - desativar não bloqueia no broker; excluir limpa os retidos;
+    - o status do sistema informa `broker.login`.
+  - Na interface, o cartão de credenciais e as abas "Credenciais" e "Desativar" mostram o texto de cada modo.
+- **Firmware:**
+  - Campo "Usuário MQTT" no portal e na página local (vazio usa o código).
+  - A mudança de usuário conta como cadastro novo.
+  - RAM estática de 59,6%.
+- **Deploy:**
+  - `docker-compose.home.yaml`: serviços `wx-*`, rede `coolify`, coletor com client id `wx-collector`, backup só do banco.
+  - `.env.home.example` e `infra/compose.home-rehearsal.yml`, com um broker igual ao de produção.
+  - A VPS continua com o `docker-compose.yaml`.
+- **Ensaio do compose de casa:** 12 de 12 verificações:
+  - login único;
+  - cadastro sem senha;
+  - leituras gravadas;
+  - configuração retida entregue;
+  - nova senha recusada;
+  - dados de estação desativada ignorados;
+  - retidos limpos na exclusão;
+  - backup só do banco.
+- **Testes:** 167 unitários, 65 de integração (5 novos do modo compartilhado), 13 E2E e 62 nativos do firmware.

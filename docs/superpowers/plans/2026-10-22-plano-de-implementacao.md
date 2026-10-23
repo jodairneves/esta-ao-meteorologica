@@ -153,6 +153,12 @@
 
 **Andamento (2026-10-23):** itens 1 a 5 concluídos. Falta o deploy de verdade, que o usuário faz: primeiro no Coolify de casa, depois na VPS.
 
+**Ajuste do mesmo dia (pedido do usuário):** em casa, o sistema usa o broker de produção que o usuário já tem, sem alterá-lo, com o login único dele.
+- `docker-compose.home.yaml`: sem broker, com a rede `coolify`.
+- Painel com `MQTT_AUTH_MODE=shared`: sem login por estação, sem nova senha; desativar só faz o coletor ignorar os dados.
+- Firmware com o campo "Usuário MQTT" (vazio usa o código da estação).
+- A VPS continua com o `docker-compose.yaml` original. Ensaio do compose de casa com um broker igual ao de produção.
+
 ---
 
 ## Fase 7 — Melhorias

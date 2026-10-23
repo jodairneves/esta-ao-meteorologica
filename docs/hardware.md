@@ -100,7 +100,7 @@ O firmware só é atualizado pelo USB: o portal não aceita envio de firmware.
 
 ## Configurar no portal
 
-1. No painel, cadastre a estação (**Cadastro de estações → Nova estação**), escolhendo a versão. Anote as credenciais MQTT: a senha aparece uma única vez.
+1. No painel, cadastre a estação (**Cadastro de estações → Nova estação**), escolhendo a versão. Anote os dados de conexão que aparecem em seguida. Com um login por estação (VPS e desenvolvimento), a senha aparece uma única vez. Com o broker compartilhado (compose de casa), a estação usa o usuário e a senha do próprio broker, que não ficam no painel.
 2. Ligue a estação. Sem configuração, ela cria a rede Wi-Fi **Estacao-XXXXXX**.
 3. Conecte o celular a essa rede (senha do `PORTAL_PASSWORD`, padrão `12345678`). A página de configuração abre sozinha, como no Wi-Fi de hotel (portal cativo):
    - No iPhone, a janela abre logo depois de conectar.
@@ -109,12 +109,13 @@ O firmware só é atualizado pelo USB: o portal não aceita envio de firmware.
 4. A página já abre na lista de redes encontradas, da mais forte para a mais fraca. Toque na rede do local e digite a senha dela.
    - Se a rede não aparecer, digite o nome em **Nome da rede** ou toque em **Procurar redes de novo**, no fim da página.
    - O D1 mini só enxerga redes de **2,4 GHz**.
-5. Em **Conexão com o servidor**, preencha servidor MQTT, porta, conexão segura (TLS), código da estação e senha MQTT.
+5. Em **Conexão com o servidor**, preencha servidor MQTT, porta, conexão segura (TLS), código da estação, usuário MQTT e senha MQTT.
+   - **Usuário MQTT:** deixe em branco quando cada estação tem login próprio, porque aí o usuário é o código da estação. Com o broker compartilhado, digite o usuário do broker.
 6. Toque em **Salvar**. A estação se conecta e aparece online no painel em alguns segundos. Se não aparecer, a senha do Wi-Fi ou os dados do servidor podem estar errados: abra o portal de novo (abaixo) e confira.
 
 Para abrir o portal de novo (trocar o Wi-Fi ou a senha): **dois toques no botão RESET em até 3 segundos**. Deixar o campo de senha MQTT vazio mantém a senha salva. Se ninguém configurar em 5 minutos, a estação dorme 15 minutos e tenta de novo, para poupar a bateria.
 
-Ao trocar de servidor (da bancada para a produção, por exemplo), de código ou de senha, a estação esquece a configuração remota antiga e recebe a do novo cadastro assim que se conecta.
+Ao trocar de servidor (da bancada para a produção, por exemplo), de código, de usuário ou de senha, a estação esquece a configuração remota antiga e recebe a do novo cadastro assim que se conecta.
 
 ## Configurar pela rede local
 
@@ -123,7 +124,7 @@ Depois que a estação entra no Wi-Fi, dá para trocar o servidor e a rede sem i
 1. No painel, abra a estação. Em **Energia e sinal** ficam o **IP na rede** e o link **Abrir a página da estação**.
 2. Entre com o usuário **admin** e a senha mostrada ali (botões **Ver** e **Copiar**, só para administradores). Se a estação ainda não tiver senha, toque em **Gerar senha**. Até a estação receber a primeira senha do painel, vale a senha do portal.
 3. Troque o que precisar e toque em **Salvar**:
-   - **Servidor MQTT:** servidor, porta, TLS, código e senha (vazia mantém a salva).
+   - **Servidor MQTT:** servidor, porta, TLS, código, usuário (vazio usa o código) e senha (vazia mantém a salva).
    - **Wi-Fi:** preencha só para trocar de rede. Depois de salvar, a página deixa de responder no endereço antigo.
 
 A estação testa a alteração por até 2 minutos. Se o que mudou conectar, ela mantém; se não, volta sozinha para a configuração anterior. O resultado aparece nos logs do painel ("Configuração alterada pela página local" ou "desfeita").
@@ -148,7 +149,8 @@ Roteiro para validar o firmware com a placa de verdade, publicando no ambiente d
    - [ ] Mudar o intervalo na **Configuração remota** gera "Configuração aplicada" nos logs.
    - [ ] Desligar o Wi-Fi do roteador por alguns minutos: ao voltar, as leituras do período chegam do buffer.
    - [ ] Com o perfil **Sempre Economia**, a estação aparece **Dormindo** e envia em lote a cada 10 minutos.
-5. **Produção:** use o servidor e a porta que o painel mostra ao cadastrar a estação (porta **1883**, TLS **desligado**; veja o [guia de deploy](deploy.md)). O firmware também sabe usar TLS na 8883. Se o broker passar a oferecer TLS, confira se a memória livre segue acima de ~8 KB com a conexão segura.
+5. **Produção:** use os dados que o painel mostra ao cadastrar a estação (porta **1883**, TLS **desligado**; veja o [guia de deploy](deploy.md)). Na VPS, o usuário MQTT fica em branco. No compose de casa, ele é o usuário do broker. O firmware também sabe usar TLS na 8883. Se o broker passar a oferecer TLS, confira se a memória livre segue acima de ~8 KB com a conexão segura.
+6. **Memória do portal:** o campo "Usuário MQTT" aumentou um pouco a página do portal. Abra o portal com muitas redes por perto e confira no log serial se a memória livre ao abrir segue parecida com a anterior (~19 KB livres, maior bloco acima de ~13 KB) e se todos os campos aparecem.
 
 ## Problemas comuns
 
