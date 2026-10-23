@@ -1,0 +1,49 @@
+# Development infrastructure: Postgres + Mosquitto (plain MQTT, localhost only).
+# Usage: pnpm infra:up | pnpm infra:down | pnpm infra:logs (reads the root .env)
+name: weather-dev
+
+services:
+  postgres:
+    image: postgres:18.6-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB in .env}
+    ports:
+      - "127.0.0.1:${DEV_POSTGRES_PORT:-5442}:5432"
+    volumes:
+      # Postgres 18 images keep data under /var/lib/postgresql/<major>/docker
+      - pgdata:/var/lib/postgresql
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  mosquitto:
+    image: eclipse-mosquitto:2.1.2-alpine
+    restart: unless-stopped
+    environment:
+      # Used by the Dynamic Security plugin to create the "admin" client on first start.
+      MOSQUITTO_DYNSEC_PASSWORD: ${MOSQUITTO_DYNSEC_PASSWORD:?set MOSQUITTO_DYNSEC_PASSWORD in .env}
+    ports:
+      - "127.0.0.1:${DEV_MQTT_PORT:-1883}:1883"
+    volumes:
+      - ./mosquitto/mosquitto.dev.conf:/mosquitto/config/mosquitto.conf:ro
+      - mosquitto-data:/mosquitto/data
+    healthcheck:
+      # Succeeds only when the broker is up and the admin credentials are accepted.
+      test:
+        [
+          "CMD-SHELL",
+          'mosquitto_pub -h 127.0.0.1 -p 1883 -u admin -P "$${MOSQUITTO_DYNSEC_PASSWORD}" -t wx/healthcheck -m ok -q 0',
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  pgdata:
+  mosquitto-data:
