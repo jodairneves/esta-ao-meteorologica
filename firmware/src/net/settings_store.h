@@ -12,8 +12,10 @@ struct MqttSettings {
   char host[64] = {0};
   uint16_t port = 8883;
   bool tls = true;
-  /** Station code: MQTT username and topic segment. */
+  /** Station code: topic segment, and MQTT username unless `user` is set. */
   char code[33] = {0};
+  /** MQTT username; empty: the station code. A shared broker's single login (design §3.10). */
+  char user[65] = {0};
   char password[65] = {0};
 
   bool complete() const;

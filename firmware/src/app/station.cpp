@@ -76,7 +76,7 @@ void copyText(char* to, size_t capacity, const char* from) {
 /** Another server or a new registration: it numbers its configuration revisions from 1 again. */
 bool newRegistration(const MqttSettings& before, const MqttSettings& after) {
   return strcmp(before.host, after.host) != 0 || strcmp(before.code, after.code) != 0 ||
-         strcmp(before.password, after.password) != 0;
+         strcmp(before.user, after.user) != 0 || strcmp(before.password, after.password) != 0;
 }
 
 /** The `next` of a `sleeping` status: unknown (null) while the clock is not set. */
@@ -252,8 +252,8 @@ void StationApp::setup() {
     }
   }
   link_.begin(settings_);
-  LOG("servidor MQTT %s:%u %s, estação %s", settings_.host, settings_.port,
-      settings_.tls ? "com TLS" : "sem TLS", settings_.code);
+  LOG("servidor MQTT %s:%u %s, estação %s, usuário %s", settings_.host, settings_.port,
+      settings_.tls ? "com TLS" : "sem TLS", settings_.code, mqttUsername(settings_.user, settings_.code));
 
   batteryMv_ = readBatteryMillivolts(config_.batFullScaleMv);
   const bool wokeFromSleep = resetReason_ == REASON_DEEP_SLEEP_AWAKE && rtcValid;
@@ -763,6 +763,7 @@ void StationApp::serviceLocalPage() {
 LocalPageView StationApp::localView() {
   LocalPageView view;
   view.code = settings_.code;
+  view.user = settings_.user;
   view.host = settings_.host;
   view.port = settings_.port;
   view.tls = settings_.tls;
@@ -782,6 +783,7 @@ void StationApp::startTrial(const LocalForm& form) {
   next.port = form.port;
   next.tls = form.tls;
   copyText(next.code, sizeof(next.code), form.code);
+  copyText(next.user, sizeof(next.user), form.user);
   if (form.password[0] != '\0') copyText(next.password, sizeof(next.password), form.password);
   const bool serverChanged =
       newRegistration(settings_, next) || next.port != settings_.port || next.tls != settings_.tls;

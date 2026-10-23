@@ -41,6 +41,10 @@ const char kFormCode[] PROGMEM =
     R"(> Conexão segura (TLS)</label><label for="code">Código da estação</label>)"
     R"(<input id="code" name="code" type="text" required pattern="[a-z0-9][a-z0-9-]{1,30}[a-z0-9]" )"
     R"(autocapitalize="none" autocorrect="off" spellcheck="false" value=")";
+const char kFormUser[] PROGMEM =
+    R"("><label for="user">Usuário MQTT</label><input id="user" name="user" type="text" maxlength="64" )"
+    R"(autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="vazio usa o código da estação" )"
+    R"(value=")";
 const char kFormWifi[] PROGMEM =
     R"("><label for="password">Senha MQTT</label><input id="password" name="password" type="password" )"
     R"(maxlength="64" autocomplete="new-password" placeholder="vazio mantém a senha salva">)"
@@ -180,6 +184,8 @@ void LocalPage::sendPage(int status, PGM_P notice, bool noticeIsError) {
   if (view.tls) server_->sendContent_P(PSTR(" checked"));
   server_->sendContent_P(kFormCode);
   sendEscaped(view.code);
+  server_->sendContent_P(kFormUser);
+  sendEscaped(view.user);
   server_->sendContent_P(kFormWifi);
   sendEscaped(ssid.c_str());
   server_->sendContent_P(kFormEnd);
@@ -208,7 +214,8 @@ void LocalPage::handleSave() {
   const LocalFormParse parsed = parseLocalForm(
       server_->arg(F("host")).c_str(), server_->arg(F("port")).c_str(),
       server_->hasArg(F("tls")) ? server_->arg(F("tls")).c_str() : nullptr, server_->arg(F("code")).c_str(),
-      server_->arg(F("password")).c_str(), server_->arg(F("ssid")).c_str(), server_->arg(F("wifipass")).c_str());
+      server_->arg(F("user")).c_str(), server_->arg(F("password")).c_str(), server_->arg(F("ssid")).c_str(),
+      server_->arg(F("wifipass")).c_str());
   if (!parsed.ok) {
     sendPage(400, parsed.error, true);
     return;

@@ -78,13 +78,18 @@ bool openPortal(MqttSettings& settings, bool& saved) {
                            WFM_LABEL_AFTER);
   // A label placed after its checkbox runs into the next label on the same line otherwise.
   WiFiManagerParameter tlsLineBreak("<br/>");
-  WiFiManagerParameter code("code", "Código da estação (usuário MQTT)", settings.code,
+  WiFiManagerParameter code("code", "Código da estação", settings.code,
                             sizeof(settings.code) - 1,
                             "required pattern=\"[a-z0-9][a-z0-9-]{1,30}[a-z0-9]\" autocapitalize=\"none\" "
                             "autocorrect=\"off\" spellcheck=\"false\" "
                             "title=\"Letras minúsculas, números e hífens, como no painel\"");
+  // Empty: the station code is the username, the login the dashboard creates for each station. A
+  // shared broker has one login for everyone instead (design §3.10).
+  WiFiManagerParameter user("user", "Usuário MQTT (vazio usa o código da estação)", settings.user,
+                            sizeof(settings.user) - 1,
+                            "autocapitalize=\"none\" autocorrect=\"off\" spellcheck=\"false\"");
   WiFiManagerParameter password(
-      "password", "Senha MQTT (mostrada uma vez no painel)", "", sizeof(settings.password) - 1,
+      "password", "Senha MQTT", "", sizeof(settings.password) - 1,
       settings.password[0] == '\0' ? "type=\"password\" required"
                                    : "type=\"password\" placeholder=\"vazio mantém a senha salva\"");
   manager.addParameter(&host);
@@ -92,6 +97,7 @@ bool openPortal(MqttSettings& settings, bool& saved) {
   manager.addParameter(&tls);
   manager.addParameter(&tlsLineBreak);
   manager.addParameter(&code);
+  manager.addParameter(&user);
   manager.addParameter(&password);
 
   const bool online = manager.startConfigPortal(portalName().c_str(), PORTAL_PASSWORD);
@@ -103,6 +109,7 @@ bool openPortal(MqttSettings& settings, bool& saved) {
   settings.port = static_cast<uint16_t>(strtoul(portField.getValue(), nullptr, 10));
   settings.tls = strcmp(tls.getValue(), "1") == 0;
   copy(settings.code, sizeof(settings.code), code.getValue());
+  copy(settings.user, sizeof(settings.user), user.getValue());
   // An empty password field keeps the one saved before (changing only the Wi-Fi is common).
   if (strlen(password.getValue()) > 0) {
     copy(settings.password, sizeof(settings.password), password.getValue());

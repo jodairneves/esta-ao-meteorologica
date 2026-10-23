@@ -12,7 +12,7 @@ namespace {
 
 const char* orEmpty(const char* text) { return text != nullptr ? text : ""; }
 
-/** 1 to `max` printable ASCII characters, no spaces (hosts and MQTT passwords). */
+/** 1 to `max` printable ASCII characters, no spaces (hosts, MQTT usernames and passwords). */
 bool isToken(const char* text, size_t max) {
   const size_t length = strlen(text);
   if (length == 0 || length > max) return false;
@@ -30,12 +30,14 @@ void copy(char* to, size_t capacity, const char* from) {
 }  // namespace
 
 LocalFormParse parseLocalForm(const char* host, const char* port, const char* tls, const char* code,
-                              const char* password, const char* ssid, const char* wifiPassword) {
+                              const char* user, const char* password, const char* ssid,
+                              const char* wifiPassword) {
   LocalFormParse result;
   LocalForm& form = result.form;
   host = orEmpty(host);
   port = orEmpty(port);
   code = orEmpty(code);
+  user = orEmpty(user);
   password = orEmpty(password);
   ssid = orEmpty(ssid);
   wifiPassword = orEmpty(wifiPassword);
@@ -52,6 +54,10 @@ LocalFormParse parseLocalForm(const char* host, const char* port, const char* tl
   }
   if (!isValidStationCode(code)) {
     result.error = WX_TEXT("O código da estação tem de 3 a 32 letras minúsculas, números ou hífens.");
+    return result;
+  }
+  if (*user != '\0' && !isToken(user, sizeof(form.user) - 1)) {
+    result.error = WX_TEXT("O usuário MQTT tem até 64 caracteres, sem espaços.");
     return result;
   }
   if (*password != '\0' && !isToken(password, sizeof(form.password) - 1)) {
@@ -76,6 +82,7 @@ LocalFormParse parseLocalForm(const char* host, const char* port, const char* tl
   form.port = static_cast<uint16_t>(number);
   form.tls = tls != nullptr && strcmp(tls, "1") == 0;
   copy(form.code, sizeof(form.code), code);
+  copy(form.user, sizeof(form.user), user);
   copy(form.password, sizeof(form.password), password);
   copy(form.ssid, sizeof(form.ssid), ssid);
   copy(form.wifiPassword, sizeof(form.wifiPassword), wifiPassword);

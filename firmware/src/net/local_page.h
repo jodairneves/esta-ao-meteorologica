@@ -13,6 +13,8 @@ namespace wx {
 /** What the local page shows about the station when it is opened. */
 struct LocalPageView {
   const char* code = "";
+  /** MQTT username typed in; empty: the station code. */
+  const char* user = "";
   const char* host = "";
   uint16_t port = 0;
   bool tls = false;

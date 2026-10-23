@@ -146,7 +146,9 @@ bool Link::mqttConnect() {
 
   char clientId[40];
   snprintf(clientId, sizeof(clientId), "st-%s", settings_.code);
-  if (!mqtt_->connect(clientId, settings_.code, settings_.password)) return false;
+  if (!mqtt_->connect(clientId, mqttUsername(settings_.user, settings_.code), settings_.password)) {
+    return false;
+  }
 
   char config[96];
   char command[96];

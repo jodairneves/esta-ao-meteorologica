@@ -16,4 +16,8 @@ bool isValidStationCode(const char* code) {
   return code[0] != '-' && code[length - 1] != '-';
 }
 
+const char* mqttUsername(const char* user, const char* code) {
+  return user != nullptr && user[0] != '\0' ? user : code;
+}
+
 }  // namespace wx

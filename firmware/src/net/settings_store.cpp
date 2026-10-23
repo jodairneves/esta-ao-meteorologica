@@ -51,7 +51,7 @@ bool mountStorage() {
 }
 
 bool loadMqttSettings(MqttSettings& settings) {
-  char buffer[384];
+  char buffer[512];
   size_t length = 0;
   if (!readFile(kMqttPath, buffer, sizeof(buffer), length)) return false;
   JsonDocument doc;
@@ -60,6 +60,8 @@ bool loadMqttSettings(MqttSettings& settings) {
   settings.port = doc["port"] | 8883;
   settings.tls = doc["tls"] | true;
   copy(settings.code, sizeof(settings.code), doc["code"] | "");
+  // Absent in files saved before the field existed: the station code is the username.
+  copy(settings.user, sizeof(settings.user), doc["user"] | "");
   copy(settings.password, sizeof(settings.password), doc["password"] | "");
   return settings.complete();
 }
@@ -70,8 +72,9 @@ bool saveMqttSettings(const MqttSettings& settings) {
   doc["port"] = settings.port;
   doc["tls"] = settings.tls;
   doc["code"] = settings.code;
+  doc["user"] = settings.user;
   doc["password"] = settings.password;
-  char buffer[384];
+  char buffer[512];
   const size_t length = serializeJson(doc, buffer, sizeof(buffer));
   return length > 0 && writeFile(kMqttPath, buffer, length);
 }
