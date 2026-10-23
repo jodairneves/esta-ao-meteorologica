@@ -9,7 +9,10 @@ pio run                     # compila para o D1 mini
 pio run -t upload           # grava pelo USB
 pio device monitor          # log serial (115200)
 ./scripts/test-native.sh    # testes da lógica no computador (pio test -e native)
+./scripts/serial-log.py     # log serial sem terminal interativo; --portal abre o portal
 ```
+
+Abrir a porta serial reinicia a placa. Logo depois de gravar, espere 3 s antes de abrir o log: o reset da gravação e o da abertura contam como reset duplo e abrem o portal.
 
 O script de testes usa o compilador C++ da máquina quando existe (`g++`) e, se não houver, roda os testes num contêiner Docker com `g++`. No Fedora, para rodar direto: `sudo dnf install gcc-c++`.
 
