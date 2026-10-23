@@ -19,7 +19,10 @@
     "infra:logs": "docker compose --env-file .env -f infra/compose.dev.yml logs -f",
     "db:generate": "pnpm --filter @wx/db generate",
     "db:migrate": "pnpm --filter @wx/db migrate",
-    "mqtt:bootstrap": "pnpm --filter @wx/mqtt-admin bootstrap"
+    "db:seed": "pnpm --filter @wx/simulator seed",
+    "mqtt:bootstrap": "pnpm --filter @wx/mqtt-admin bootstrap",
+    "dev:collector": "pnpm --filter @wx/collector dev",
+    "simulate": "pnpm --filter @wx/simulator simulate"
   },
   "devDependencies": {
     "@biomejs/biome": "2.6.2",

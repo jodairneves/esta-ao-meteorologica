@@ -1,0 +1,19 @@
+{
+  "name": "@wx/simulator",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Virtual weather stations for development, tests and demos.",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p .",
+    "seed": "tsx --env-file-if-exists=../../.env src/seed.ts",
+    "simulate": "tsx --env-file-if-exists=../../.env src/cli.ts"
+  },
+  "dependencies": {
+    "@wx/db": "workspace:*",
+    "@wx/mqtt-admin": "workspace:*",
+    "@wx/shared": "workspace:*",
+    "mqtt": "^5.16.1",
+    "zod": "^4.6.7"
+  }
+}
