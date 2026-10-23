@@ -167,6 +167,7 @@ As estações voltam a conectar com as senhas que já tinham.
 | A estação não conecta (`erro -3` no monitor serial) | A porta está liberada no firewall ou no roteador? O registro do broker está com a nuvem cinza? No D1 mini, a porta é a de `PUBLIC_MQTT_PORT`, com o TLS desligado? |
 | Em casa, só as estações de dentro de casa não conectam | Falta NAT reflection no pfSense, ou um Host Override do nome do DDNS para o IP do servidor na LAN |
 | A estação conecta, mas o log mostra `código 5` (login recusado) | Na VPS, o **Usuário MQTT** tem que ficar em branco. Em casa, ele é o usuário do broker, com a senha do broker |
+| O painel responde "no available server" | O domínio está no serviço errado. O log do proxy (`docker logs coolify-proxy`) mostra `port is missing` para outro serviço, como o `wx-collector`. Deixe o domínio só no `dashboard` (VPS) ou no `wx-dashboard` (casa), com o `:3000`, apague-o dos outros campos e faça o Redeploy |
 | O login mostra "Requisição recusada por segurança" | A `APP_URL` tem que ser exatamente o endereço aberto no navegador, com `https://` |
 | O painel não atualiza sozinho | O tempo real usa SSE (`/api/v1/stream`), que não pode ficar retido no proxy. Recarregue a página e veja os logs do painel |
 | Coletor não saudável | O heartbeat dele não está chegando ao banco: veja os logs do coletor e do banco |
