@@ -11,7 +11,7 @@ Sistema de monitoramento de estações meteorológicas DIY baseadas no **Wemos D
 
 O design completo está em [`docs/superpowers/specs/2026-10-22-estacao-meteorologica-design.md`](docs/superpowers/specs/2026-10-22-estacao-meteorologica-design.md) e o plano por fases em [`docs/superpowers/plans/2026-10-22-plano-de-implementacao.md`](docs/superpowers/plans/2026-10-22-plano-de-implementacao.md).
 
-> **Status:** Fases 1 a 4 concluídas — contrato MQTT, banco de dados, administração do broker, **coletor (App 1)**, **simulador de estações** e **dashboard (App 2)**, com API e interface web. Firmware e deploy vêm nas próximas fases.
+> **Status:** Fases 1 a 5 concluídas: contrato MQTT, banco de dados, administração do broker, **coletor (App 1)**, **simulador de estações**, **dashboard (App 2)** com API e interface web, e o **firmware** do D1 mini (falta o teste em bancada com a placa real). O deploy vem na próxima fase.
 
 ## Pré-requisitos
 
@@ -31,7 +31,7 @@ pnpm mqtt:bootstrap      # cria papéis e o cliente do coletor no Mosquitto
 ### Ver o sistema funcionando sem hardware
 
 ```bash
-pnpm db:seed                         # 3 estações de demonstração (banco + credenciais MQTT)
+pnpm db:seed                         # 4 estações de demonstração (banco + credenciais MQTT)
 pnpm dev                             # coletor + API do dashboard + interface (deixe rodando)
 pnpm simulate --backfill 7d          # em outro terminal: 7 dias de histórico + tempo real
 ```
@@ -57,6 +57,8 @@ Opções do simulador: `--interval 10` (leituras mais frequentes), `--chaos` (fa
 | `pnpm --filter @wx/dashboard build` | Gera a interface em `apps/dashboard/dist/web` (servida pela API com `WEB_DIST`) |
 | `pnpm --filter @wx/dashboard e2e` | Testes de ponta a ponta (Playwright) contra o sistema rodando |
 | `pnpm simulate` | Estações virtuais (ver opções acima; `--help`) |
+| `cd firmware && pio run -t upload` | Compila e grava o firmware no D1 mini ([guia de hardware](docs/hardware.md)) |
+| `firmware/scripts/test-native.sh` | Testes do firmware no computador |
 
 ## Estrutura
 
@@ -70,8 +72,9 @@ packages/
   mqtt-admin/    # Dynamic Security do Mosquitto: papéis e credenciais das estações
 tools/
   simulator/     # estações virtuais (clima, bateria/solar, perfis de energia, falhas)
+firmware/        # D1 mini (PlatformIO, C++): medição, perfis de energia, MQTT com TLS
 infra/           # compose de desenvolvimento e configuração do Mosquitto
-docs/            # design, plano e guias
+docs/            # design, plano e guias (hardware.md, calibracao.md)
 ```
 
 ## Dashboard

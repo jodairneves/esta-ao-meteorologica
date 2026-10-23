@@ -118,7 +118,7 @@ Estação D1 mini ──MQTT/TLS :8883──▶ Mosquitto ──QoS 1──▶ A
 | Web | React 19, Vite 8, React Router, TanStack Query, Tailwind CSS 4, shadcn/ui |
 | Visualização | ECharts 6 (+ echarts-gl), Three.js com React Three Fiber/drei, MapLibre GL |
 | Qualidade | Biome (lint + format), Vitest, Playwright, testes nativos do PlatformIO (Unity) |
-| Firmware | PlatformIO, Arduino ESP8266, espMqttClient, WiFiManager, ArduinoJson 7, Adafruit BME280, LittleFS |
+| Firmware | PlatformIO, Arduino ESP8266, MQTT (256dpi/arduino-mqtt), WiFiManager, ArduinoJson 7, Adafruit BME280, LittleFS |
 | Deploy | Docker Compose (Coolify ou servidor local), lego (Let's Encrypt via DNS da Cloudflare), cloudflared |
 
 ---
@@ -244,6 +244,8 @@ Regras de validação:
 
 A estação aplica a configuração quando `rev` é maior que a aplicada, grava na flash e responde `CONFIG_APPLIED` (ou `CONFIG_REJECTED` com o motivo). A calibração das grandezas não passa por aqui: fica no servidor.
 
+Trocar o servidor, o código ou a senha no portal apaga a configuração guardada (a `rev` volta a 0). Um cadastro novo recomeça a numeração em 1, por exemplo na passagem da bancada para a produção, e a configuração retida chega de novo na conexão.
+
 ### 3.8 `cmd` (servidor → estação)
 
 ```json
@@ -253,11 +255,11 @@ A estação aplica a configuração quando `rev` é maior que a aplicada, grava 
 | Comando | Efeito |
 |---|---|
 | `reboot` | Reinicia a estação |
-| `identify` | Pisca o LED por 30 s (para achar a estação fisicamente) |
+| `identify` | Pisca o LED por 30 s (para achar a estação fisicamente). Recusado na Sobrevivência, em que a estação volta logo a dormir |
 | `flush` | Envia o buffer e o status agora |
 | `health` | Envia o diagnóstico agora |
 
-Comando vencido (`exp` < agora) é recusado com `CMD_ACK` `ok=false`, `detail="expired"`.
+Comando vencido (`exp` < agora) é recusado com `CMD_ACK` `ok=false`, `detail="expired"`. A estação guarda na memória RTC os ids dos 4 últimos comandos: um comando reentregue (o QoS 1 reentrega depois de um `reboot`) não roda de novo.
 
 ### 3.9 Sessões e QoS
 
@@ -322,16 +324,18 @@ Broker com `persistence true` e fila por cliente ampliada (`max_queued_messages`
 |---|---|---|---|
 | **Normal** | Bateria ≥ `recover_above_mv`, ou `power.mode=normal` | Wi-Fi conectado (modem sleep); publica cada leitura ao fim do intervalo; status `online` | 20–30 mA |
 | **Economia** | Bateria < `economy_below_mv` | Continua contando pulsos; Wi-Fi desligado entre envios. A cada `economy_batch_s` conecta, envia o buffer em lotes, recebe configuração e comandos, publica `sleeping` com `next` e desconecta | ~15 mA |
-| **Sobrevivência** | Bateria < `survival_below_mv` | Deep sleep por `survival_sleep_s`; ao acordar lê BME280 e bateria, envia com vento e chuva `null` e volta a dormir. Sai quando a bateria ≥ `recover_above_mv` | < 1 mA |
+| **Sobrevivência** | Bateria < `survival_below_mv` | Deep sleep por `survival_sleep_s`; ao acordar lê o sensor de clima e a bateria, envia com vento e chuva `null` e volta a dormir. Sai quando a bateria ≥ `recover_above_mv` | < 1 mA |
 
 - No boot, o perfil é escolhido direto pelos limiares: abaixo de `survival_below_mv` → Sobrevivência; abaixo de `economy_below_mv` → Economia; senão → Normal.
 - Depois do boot, a bateria é medida a cada 60 s (mediana de 5 amostras, com o rádio ocioso). A troca de perfil exige 3 medições consecutivas (histerese) e gera o evento `MODE_CHANGED`. Economia e Sobrevivência só voltam ao Normal a partir de `recover_above_mv`.
 - `power.mode=normal` ou `economy` fixa o perfil — necessário quando não há divisor no A0.
 - Abaixo de 3300 mV a estação nem liga o Wi-Fi (evita brownout) e volta a dormir.
+- Na Sobrevivência, as leituras que não puderam ser enviadas ficam na memória RTC (até 12) e seguem no despertar seguinte. Leituras sem horário (o NTP não respondeu) não são enviadas.
 
 ### 4.4 Comunicação
 
-- Buffer em RAM de 120 leituras (~2 h a 1 leitura/min). Uma leitura só sai do buffer depois do PUBACK. Buffer cheio descarta a mais antiga, soma em `dropped` e gera `BUFFER_OVERFLOW`.
+- Buffer em RAM de 120 leituras (~2 h a 1 leitura/min). Uma leitura só sai do buffer depois do PUBACK: a biblioteca MQTT só devolve a publicação QoS 1 depois da confirmação. Buffer cheio descarta a mais antiga, soma em `dropped` e gera `BUFFER_OVERFLOW`.
+- Sem relógio (o NTP não respondeu), as leituras ficam no buffer com o `millis()` do fim do intervalo e recebem o horário quando o NTP responder; eventos e `status` vão com `ts` `null`, e o `next` do `sleeping` também.
 - Lotes de até 30 leituras por mensagem.
 - Reconexão com espera progressiva (5 s até 5 min). Sem publicar por 30 min, reinicia o Wi-Fi; por 2 h, reinicia o ESP.
 - Nos perfis Economia e Sobrevivência guarda canal e BSSID na RTC para reconectar mais rápido.

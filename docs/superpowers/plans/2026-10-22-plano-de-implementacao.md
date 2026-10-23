@@ -135,6 +135,8 @@
 
 **Aceite:** `pio test -e native` e `pio run -e d1_mini` passam; em bancada a estação aparece online no painel e os pulsos viram vento e chuva, com BME280 ou com HTU21D.
 
+**Andamento (2026-10-23):** itens 1 a 8 concluídos (build sem avisos e 46 testes nativos). O item 9, teste em bancada com a medição da RAM livre com TLS, fica com o usuário e segue o roteiro de `docs/hardware.md`.
+
 ---
 
 ## Fase 6 — Deploy

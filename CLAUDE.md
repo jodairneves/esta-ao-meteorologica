@@ -13,7 +13,7 @@ Sistema de monitoramento de estações meteorológicas DIY (Wemos D1 mini/ESP826
 - **App 1 — Coletor** (`apps/collector`): único consumidor da telemetria MQTT. Valida, calibra, calcula derivados, grava no PostgreSQL, monitora estações e sensores e abre alertas.
 - **App 2 — Dashboard** (`apps/dashboard`): API Fastify (`src/server`) + SPA React (`src/web`). Lê só do banco; o tempo real vem por `LISTEN/NOTIFY` → SSE. Provisiona as credenciais MQTT (Dynamic Security) e envia comandos às estações.
 - **Pacotes:** `packages/shared` (contrato MQTT em zod, domínio, fórmulas meteorológicas; roda no Node e no navegador), `packages/db` (esquema Drizzle, migrações, NOTIFY), `packages/mqtt-admin` (Dynamic Security do Mosquitto).
-- **Firmware** (`firmware/`): PlatformIO para D1 mini, com perfis de energia Normal/Economia/Sobrevivência.
+- **Firmware** (`firmware/`): PlatformIO para D1 mini, com perfis de energia Normal/Economia/Sobrevivência. Guias em `docs/hardware.md` e `docs/calibracao.md`.
 - **Contrato MQTT v1:** `weather/v1/{code}/{telemetry|status|health|event|config|cmd}` (§3 do design).
 
 ## Decisões que não devem ser revertidas sem conversar com o usuário
@@ -57,6 +57,9 @@ Sistema de monitoramento de estações meteorológicas DIY (Wemos D1 mini/ESP826
 | `pnpm check` | Biome + typecheck (todos os pacotes, inclusive web e e2e) + testes unitários |
 | `pnpm test:int` | Testes de integração (exigem `pnpm infra:up`; usam o banco `weather_test`) |
 | `pnpm format` | Formata e organiza imports |
+| `cd firmware && pio run` / `pio run -t upload` / `pio device monitor` | Compila o firmware, grava pelo USB e mostra o log serial (115200) |
+| `firmware/scripts/test-native.sh [-f test_x]` | Testes nativos do firmware (`pio test -e native`); sem `g++` na máquina, roda num contêiner Docker |
+| `DEV_MQTT_BIND=0.0.0.0` no `.env` + `pnpm infra:up` | Expõe o Mosquitto de dev na rede local, só durante o teste em bancada |
 
 ## Notas técnicas (armadilhas já encontradas)
 
@@ -91,6 +94,12 @@ Sistema de monitoramento de estações meteorológicas DIY (Wemos D1 mini/ESP826
 - **Coletor e API aplicam migrações sozinhos ao subir** (`prepareDatabase`), e o `pnpm dev` (tsx watch) reinicia quando o esquema muda. Antes de gerar uma migração, pare o `pnpm dev` se ela não deve ser aplicada ainda; o usuário pede confirmação explícita antes de migrar o banco de dev.
 - **Cores das estações na comparação:** as posições seguem a ordem de cadastro (ids UUIDv7), para que uma estação nova não mude as cores das antigas.
 - **Simulador:** `--interval` só acelera as leituras; o monitor usa o intervalo configurado no banco (60 s). Intervalo maior que o configurado gera alerta de estação sem contato. O `--backfill` consulta a última leitura de cada estação no banco para não duplicar histórico.
+- **Firmware — testes nativos:** a máquina de dev não tem `g++` (`sudo dnf install gcc-c++` resolveria). O `scripts/test-native.sh` cai para um contêiner (`scripts/native-test.Dockerfile`: Python 3.12, g++ e PlatformIO 6.1.19), roda com o usuário da máquina e guarda os pacotes em `~/.cache/wx-pio-native`.
+- **Firmware — biblioteca MQTT:** é a 256dpi/arduino-mqtt (o design original citava a espMqttClient). O `publish` com QoS 1 bloqueia até o PUBACK (timeout de 10 s), o que garante que a leitura só sai do buffer depois da confirmação. O callback de mensagem não pode usar o cliente (risco de deadlock): `config` e `cmd` vão para uma caixa de entrada (4 × 512 bytes) tratada no loop.
+- **Firmware — RAM:** 58% de RAM estática (47,5 KB) e 53% da flash. O risco é o heap com TLS: com Max Fragment Length os buffers do BearSSL ficam em 1024 bytes; sem ele, o de entrada passa de 16 KB. Conferir a "Memória livre" em bancada (meta: acima de ~8 KB). `PIO_FRAMEWORK_ARDUINO_LWIP2_LOW_MEMORY` está ligado.
+- **Firmware — avisos:** `-Wall -Wextra` valem só para o código do projeto (`build_src_flags`); as bibliotecas compilam com os avisos padrão.
+- **Firmware — deep sleep:** o relógio do sistema não sobrevive; cada despertar refaz o NTP. O que precisa sobreviver fica na memória RTC (`RtcState`, até 512 bytes, com CRC32). Dois resets em até 3 s abrem o portal (flag `resetArmed` na RTC).
+- **Firmware — contrato:** `test/test_payload` compara o JSON exato. Ao mudar o contrato, confira esses JSON com os esquemas zod do `shared`: na Fase 5 isso foi feito com um teste temporário que imprime os payloads, validados por um script `tsx`.
 
 ## Estado atual
 
@@ -99,7 +108,8 @@ Sistema de monitoramento de estações meteorológicas DIY (Wemos D1 mini/ESP826
 - **Fase 3 — API do Dashboard:** concluída (2026-10-23).
 - **Fase 4 — Web:** concluída (2026-10-23), com o teste de ponta a ponta usando os dados fictícios do simulador.
 - **Fase 4.5 — Duas versões de estação (BME280 e HTU21D):** concluída (2026-10-23).
-- **Em andamento:** Fase 5 (firmware), aprovada pelo usuário junto com a Fase 6 (deploy). Para a Fase 6, falta saber o domínio, onde está o DNS e se começa por VPS/Coolify ou servidor local.
+- **Fase 5 — Firmware:** implementada (2026-10-23). Compila e passa nos testes nativos; o teste em bancada com o D1 mini real (roteiro em `docs/hardware.md`) fica com o usuário.
+- **Próximo:** Fase 6 (deploy), já aprovada. Falta o usuário dizer o domínio, onde está o DNS e se começa pela VPS/Coolify ou pelo servidor local.
 - O primeiro admin (`ADMIN_EMAIL`/`ADMIN_PASSWORD`) é criado pela API ao subir (hash argon2id).
 - **Hardware do usuário:** D1 mini, BME280, anemômetro e pluviômetro impressos em 3D (modelos MakerWorld), bateria de lítio e talvez um painel solar pequeno.
 - **Produção:** VPS com Coolify **ou** servidor local com Cloudflare Tunnel (painel) e port forward (MQTT 8883).
@@ -230,3 +240,21 @@ Sistema de monitoramento de estações meteorológicas DIY (Wemos D1 mini/ESP826
   - Na comparação de pressão, essas estações ficam de fora, com aviso.
 - **Simulador:** estação de demonstração `horta` (HTU21D), que envia `pres: null` e informa o sensor certo no `health`.
 - **Testes:** 162 unitários, 57 de integração e 12 E2E (novos: contrato, regras do monitor, sensor instalado, leitura sem pressão, aviso de sensor trocado, troca de versão pela API e cadastro HTU21D no navegador).
+
+### 2026-10-23 — Fase 5: firmware do D1 mini
+- **`firmware/`** (PlatformIO, Arduino ESP8266): um só firmware para as duas versões; no boot procura o BME280 (0x76/0x77) e depois o HTU21D (0x40).
+  - `src/core/`: lógica sem hardware, com 46 testes Unity nativos. Cobre rajada de 3 s, buffer de 120 leituras, perfis de energia com histerese, configuração remota (mesmas regras do zod), comandos com deduplicação, JSON do contrato v1, estado na memória RTC com CRC32, conversões do HTU21D (com CRC) e da bateria, e intervalos alinhados ao relógio.
+  - `src/hw/`: pulsos por interrupção com debounce (vento 2 ms; chuva 50 ms, em mudança de estado ou na borda de descida), sensor de clima, bateria (mediana de 5), LED e memória RTC.
+  - `src/net/`: LittleFS com gravação atômica, portal WiFiManager, Wi-Fi com reconexão rápida (canal e BSSID), NTP e MQTT com TLS (raízes ISRG X1/X2 e Max Fragment Length).
+  - `src/app/`: perfis Normal, Economia (sessões curtas) e Sobrevivência (deep sleep, até 12 leituras guardadas na RTC); vigias de 30 min (Wi-Fi) e 2 h (placa); configuração remota e comandos.
+- **Revisão antes do commit:**
+  - Horário `null` quando o NTP não respondeu (eventos e `next` do status).
+  - Mudança de perfil aplicada antes de atender a conexão.
+  - Diagnóstico sem envio duplicado; `identify` recusado na Sobrevivência.
+  - Id de comando validado; a configuração é esquecida ao trocar servidor ou credenciais no portal.
+- **Contrato conferido:** os JSON gerados pelo firmware passam nos esquemas zod (telemetria, status, diagnóstico e eventos com `data`).
+- **Guias:** `docs/hardware.md` (versões, materiais, ligações, alimentação, gravação, portal e roteiro de bancada) e `docs/calibracao.md`.
+- **Dev:**
+  - `DEV_MQTT_BIND` expõe o Mosquitto de dev na rede local para o teste em bancada.
+  - A calculadora do anemômetro parte do modelo de referência (80 mm, 3 ímãs).
+- **Pendente (usuário):** teste em bancada, inclusive a memória livre com TLS.
