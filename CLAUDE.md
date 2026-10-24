@@ -182,13 +182,15 @@ Sistema de monitoramento de estações meteorológicas DIY (Wemos D1 mini/ESP826
   - O painel fica em `estacao.jodairneves.dev.br`; as estações recebem o endereço do MQTT pelo portal ou pela página local.
   - Falta medir de novo, na bancada, a memória do portal com o campo "Usuário MQTT" (ao abrir o portal, antes do celular: 24,6 KB livres).
 - **Deploy em casa (2026-10-23):** feito. O painel abre em `estacao.jodairneves.dev.br` pelo túnel, e o coletor e o painel estão no broker de produção com o login único.
-- **Bancada, pendências:**
-  - O D1 mini (MAC `cc:50:e3:08:08:e6`) foi apagado com `pio run -t erase` e recebeu o firmware novo. Está configurado com a estação `estacao-teste`, o servidor do DDNS de casa e o usuário do broker.
-  - O Wi-Fi salvo é o hotspot de 2,4 GHz do celular do usuário. Ele o criou para testar o acesso externo: a estação sai pelos dados móveis e volta pelo DDNS de casa.
-  - O Wi-Fi não conecta. O log de diagnóstico mostra o hotspot visível (canal 6, -38 dBm, WPA2) e que **a rede recusou a senha**.
-  - Próximo passo: o usuário digita de novo a senha do hotspot no portal. A senha deve ter só caracteres comuns, sem acento ou ç.
-  - O portal pode ser aberto pelo USB com `serial-log.py --portal`.
-  - Investigar um reset de watchdog (`rst cause:4`, cerca de 13 s depois do boot) no perfil Sobrevivência. Aconteceu uma vez, com o estado antigo da memória RTC (veja a nota de 2026-10-23 em "Registro").
+- **Bancada (2026-10-23):** funcionando de ponta a ponta com o deploy de casa.
+  - O D1 mini (MAC `cc:50:e3:08:08:e6`), apagado e com o firmware novo, é a `estacao-teste` (versão HTU21D, ainda sem sensores).
+  - Ele entra no hotspot de 2,4 GHz do celular do usuário, sai pelos dados móveis e chega ao broker pelo DDNS de casa com o login único. Recebeu a configuração rev 1 e aparece Online no painel de produção.
+  - Bateria "Não instalado" e HTU21D "Com falha" (com alerta) são esperados enquanto os sensores não estiverem ligados.
+- **Pendências:**
+  - Tornar o portal resistente à página cortada. Ao recarregar a página com pouca memória (maior bloco ~12 KB), os campos do servidor podem sumir, e o salvamento chega sem eles: o firmware reabre o portal com esses campos em branco.
+  - Investigar o reset de watchdog visto uma vez no perfil Sobrevivência (veja "Registro", Deploy em casa).
+  - No Coolify, desmarcar "Build Variable" das variáveis com senha e fazer o Redeploy (que também aplica a senha do banco fora da URL).
+  - Ligar os sensores e depois seguir para a VPS.
 - O primeiro admin (`ADMIN_EMAIL`/`ADMIN_PASSWORD`) é criado pela API ao subir (hash argon2id).
 - **Hardware do usuário:** D1 mini, BME280, anemômetro e pluviômetro impressos em 3D (modelos MakerWorld), bateria de lítio e talvez um painel solar pequeno.
 - **Produção:**
