@@ -186,7 +186,18 @@ Sistema de monitoramento de estações meteorológicas DIY (Wemos D1 mini/ESP826
   - O D1 mini (MAC `cc:50:e3:08:08:e6`), apagado e com o firmware novo, é a `estacao-teste` (versão HTU21D, ainda sem sensores).
   - Ele entra no hotspot de 2,4 GHz do celular do usuário, sai pelos dados móveis e chega ao broker pelo DDNS de casa com o login único. Recebeu a configuração rev 1 e aparece Online no painel de produção.
   - Bateria "Não instalado" e HTU21D "Com falha" (com alerta) são esperados enquanto os sensores não estiverem ligados.
+- **Bancada com o Hall 49E (2026-10-27):** o usuário só tem o 49E puro, sem módulo.
+  - Alimentado em 3,3 V, a saída em repouso (~1,65 V) cai no ponto de virada da entrada digital desta placa. O pino alterna sem parar e gera uma enxurrada de interrupções: `Soft WDT reset` em loop (a pilha decodificada mostra o `interrupt_handler`) e o HTU21D não é encontrado no I²C.
+  - Alimentado em **5 V**, o repouso vai para ~2,5 V, e a placa estabiliza. Os pulsos do ímã contam: entraram como vento, no D6.
+  - Circuito recomendado ao usuário para a soldagem:
+    - 1 kΩ em série entre OUT e o pino;
+    - Schottky do pino para o 3V3, como proteção, porque com o polo sul a saída passa de 3,6 V;
+    - 100 nF no sensor;
+    - polo norte dos ímãs voltado para a face com o texto do 49E.
+  - Só vale com 5 V estáveis (USB ou fonte). Numa célula de lítio direta, o repouso volta para perto do ponto de virada. Para a estação a bateria, o certo é um reed switch ou um Hall digital de 3,3 V (DRV5032).
+  - O HTU21D falhou duas vezes durante esses testes: mau contato nos fios provisórios, ou a saída do 49E acima de 3,3 V sem o resistor. O usuário vai soldar tudo.
 - **Pendências:**
+  - Proteção no firmware contra sinal instável nos pinos de pulso: pausar a entrada quando a taxa de pulsos for impossível e marcar o sensor com falha, em vez de travar a estação. Também, um log serial por basculada e por minuto de vento para a bancada. Foi oferecido ao usuário, que ainda não respondeu.
   - Tornar o portal resistente à página cortada. Ao recarregar a página com pouca memória (maior bloco ~12 KB), os campos do servidor podem sumir, e o salvamento chega sem eles: o firmware reabre o portal com esses campos em branco.
   - Investigar o reset de watchdog visto uma vez no perfil Sobrevivência (veja "Registro", Deploy em casa).
   - No Coolify, desmarcar "Build Variable" das variáveis com senha e fazer o Redeploy (que também aplica a senha do banco fora da URL).
