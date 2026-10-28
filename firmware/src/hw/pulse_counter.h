@@ -7,14 +7,16 @@
 namespace wx {
 
 /**
- * Interrupt-driven pulse counters (design §4.2): the anemometer on the falling edge with a 2 ms
- * debounce (up to 500 Hz), the rain gauge on every change or only on the falling edge, with a
- * 50 ms debounce.
+ * Interrupt-driven pulse counters (design §4.2), on both edges of each pin: the anemometer counts a
+ * falling edge after 10 ms without edges, the rain gauge every change, or only the falls, of a
+ * level that lasted 10 ms (core/pulse_filter.h).
  */
 class PulseCounters {
  public:
-  void begin(RainEdge rainEdge);
-  void setRainEdge(RainEdge rainEdge);
+  void begin(RainEdge edge);
+  void setRainEdge(RainEdge edge);
+  /** Call it often: confirms the rain gauge's last change once it has lasted 10 ms. */
+  void service();
   void end();
 
   /** Anemometer pulses since the last call. */

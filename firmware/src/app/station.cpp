@@ -343,6 +343,7 @@ void StationApp::scheduleIntervalEnd() {
 }
 
 void StationApp::serviceSeconds() {
+  pulses_.service();
   const uint32_t elapsed = millis() - lastSecondMs_;
   if (elapsed < 1000) return;
   const uint32_t seconds = elapsed / 1000;
@@ -377,6 +378,9 @@ void StationApp::closeInterval() {
   reading.windPulses = gust_.total();
   reading.gustPulses = gust_.gust();
   reading.rainCount = rtc_.rainCount;
+  // Raw counts, before the server's calibration: lets the bench see the pulse sensors work.
+  LOG("leitura %u: vento %u pulsos em %u s (rajada de 3 s: %u), contador da chuva %u", reading.seq,
+      reading.windPulses, reading.dur, reading.gustPulses, reading.rainCount);
 
   if (buffer.push(reading)) {
     rtc_.dropped++;
