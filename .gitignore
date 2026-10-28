@@ -38,5 +38,6 @@ firmware/.vscode/
 .DS_Store
 Thumbs.db
 
-# Third-party reference PDFs kept in the project root (not versioned)
+# Third-party reference PDFs and saved pages, kept locally (not versioned)
 /*.pdf
+/tmp/

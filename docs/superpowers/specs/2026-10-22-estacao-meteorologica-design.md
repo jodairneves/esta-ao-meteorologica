@@ -46,16 +46,17 @@ PDFs de terceiros consultados no design (nunca versionados; removidos do projeto
 
 | Documento | O que aproveitamos |
 |---|---|
-| Pluviômetro (MakerWorld, laisch) | Mesmo hardware: D1 mini, Hall 49E em D5/GPIO14, BME280 em D1/D2 (0x76). 0,64 mm por basculada (balde de 7 ml, ~10.929 mm²). Conta cada mudança de estado do sensor |
-| DIY Arduino Rain Gauge (Instructables) | Outro modelo: 0,173 mm por pulso; também conta mudanças de estado |
-| Anemômetro (MakerWorld, SoftWareCrash) | 3 ímãs (3 pulsos por volta), raio de 80 mm. A fórmula v ≈ 0,167 × pulsos/s dá a velocidade das conchas; falta o fator do anemômetro (~2,5–3) |
-| Estação DIY com ESP32 (Instructables) | Cata-vento com 4 sensores Hall (4 GPIOs, 8 direções); sensor de temperatura dentro de abrigo Stevenson |
+| Pluviômetro (MakerWorld, laisch) | Mesmo hardware: D1 mini, Hall 49E em D5/GPIO14 (alimentado em 5 V; o link do autor não deixa claro se é o 49E solto ou em placa), BME280 em D1/D2 (0x76). 0,64 mm por basculada (balde de 7 ml, ~10.929 mm²). No ESPHome, conta cada mudança de estado que dura 10 ms (`delayed_on`/`delayed_off`). Um comentário relata que o 49E solto é analógico e passou a ler a tensão com dois limites |
+| DIY Arduino Rain Gauge (Instructables) | Outro modelo: 0,173 mm por pulso. Placa Hall com LED em 5 V; lê o pino a cada 500 ms e conta as mudanças de estado |
+| Anemômetro (MakerWorld, SoftWareCrash) | 3 ímãs (3 pulsos por volta), raio de 80 mm. A fórmula v ≈ 0,167 × pulsos/s dá a velocidade das conchas; falta o fator do anemômetro (~2,5–3). Sensor Hall em placa: o link do autor é o KY-024 (49E com comparador LM393 e potenciômetro). Tasmota (opção Windmeter) ou ESPHome |
+| Estação DIY com ESP32 (Instructables) | Cata-vento com 4 sensores Hall (4 GPIOs, 8 direções); sensor de temperatura dentro de abrigo Stevenson. Placas Hall de 5 V com conversor de nível para 3,3 V; `pulse_counter` do ESPHome |
 
 Lições incorporadas ao design:
 
 - A calibração de vento e chuva varia por modelo → fatores configuráveis por estação, aplicados no servidor.
 - O contador de chuva zera quando o ESP reinicia → contador na memória RTC e cálculo por diferença no servidor, robusto a reinícios.
-- O 49E é analógico; numa entrada digital o repouso (~1,65 V) cai na zona indefinida do ESP → recomendar reed switch ou Hall digital de baixo consumo.
+- O 49E é analógico; numa entrada digital o repouso (~1,65 V em 3,3 V) cai na zona indefinida do ESP. As referências usam o 49E em placa com comparador (KY-024), lido pela saída digital → recomendar o KY-024, um reed switch ou um Hall digital de baixo consumo. Na bancada (2026-10-27), o 49E solto só funcionou em 5 V e com um divisor na saída (§4.1).
+- Os filtros das referências exigem estabilidade (10 ms no pluviômetro; no anemômetro, o `pulse_counter` do ESPHome reinicia o filtro a cada borda) → o firmware usa as mesmas regras (§4.2).
 - O BME280 perto do ESP8266 mede o calor do próprio ESP → sensor afastado, em abrigo ventilado.
 
 ---
@@ -337,21 +338,26 @@ Broker com `persistence true` e fila por cliente ampliada (`max_queued_messages`
 | Componente | Pino | GPIO | Observação |
 |---|---|---|---|
 | BME280 **ou** HTU21D SDA / SCL | D2 / D1 | 4 / 5 | I²C. BME280 em 0x76 ou 0x77; HTU21D em 0x40. O firmware detecta qual está ligado |
-| Pluviômetro (reed ou Hall digital) | D5 | 14 | `INPUT_PULLUP`, interrupção |
-| Anemômetro (reed ou Hall digital) | D6 | 12 | `INPUT_PULLUP`, interrupção |
+| Pluviômetro (reed, Hall digital ou KY-024) | D5 | 14 | `INPUT_PULLUP`, interrupção nas duas bordas |
+| Anemômetro (reed, Hall digital ou KY-024) | D6 | 12 | `INPUT_PULLUP`, interrupção nas duas bordas |
 | Bateria (+) passando por resistor de 100 kΩ | A0 | — | Soma-se ao divisor interno (220k/100k): fundo de escala ≈ 4,2 V |
 | Fio de D0 ao RST | D0 | 16 | Necessário para acordar do deep sleep (Sobrevivência) |
 | LED da placa | D4 | 2 | Ativo em nível baixo; desligado por padrão |
 
-- **Sensores de pulso:** reed switch (0 mA) ou Hall digital de 3,3 V e baixo consumo (ex.: DRV5032). O 49E não é recomendado (~6 mA contínuos e repouso em zona indefinida). Retirar os LEDs das plaquinhas dos sensores.
+- **Sensores de pulso:**
+  - reed switch (0 mA) ou Hall digital de 3,3 V e baixo consumo (ex.: DRV5032), os melhores para bateria;
+  - ou o módulo KY-024 (49E com comparador), como nos modelos de referência: alimentado em 3,3 V, pela saída DO, com o potenciômetro ajustado para virar só com o ímã na frente. Gasta alguns mA o tempo todo.
+  - O 49E solto não é recomendado: ~6 mA contínuos, e em 3,3 V o repouso cai na zona indefinida (enxurrada de interrupções). Em 5 V, os ímãs mal passam do ponto de virada do pino (~1,65 V). Com um divisor na saída (1 kΩ em série e 10 kΩ para o GND, ajustado à alimentação), o ponto de virada fica entre o repouso e o ímã mais fraco: na bancada, 30 pulsos em 10 voltas e zero com o rotor parado.
+  - Retirar os LEDs das plaquinhas dos sensores.
 - **Alimentação:** célula 18650 (Li-ion) no pino 5V, passando pelo regulador do D1 mini. ⚠️ Nunca ligar o USB com a bateria conectada ao pino 5V — o USB alimentaria a bateria diretamente. Usar um diodo ou desconectar a bateria antes. Alternativa mais eficiente: LiFePO4 direto no 3V3, com os limiares de energia ajustados.
 - **Solar (opcional):** painel de 5–6 V e 1–3 W com carregador TP4056 com proteção.
 - **BME280 ou HTU21D:** fora da caixa do ESP, em abrigo ventilado. Os dois funcionam em 3,3 V e usam a mesma ligação; só um deles por estação.
 
 ### 4.2 Medição
 
-- **Anemômetro:** interrupção na borda de descida, debounce de 2 ms (até 500 Hz).
-- **Pluviômetro:** interrupção em mudança de estado (`rain_edge=change`) ou na borda de descida (`falling`); debounce de 50 ms.
+- **Anemômetro:** interrupção nas duas bordas, com a regra do `pulse_counter` do ESPHome: toda borda reinicia o filtro, e um pulso é a primeira borda depois de 10 ms com a linha em alto (sem depender do nível lido na interrupção: o mergulho de um ímã fraco dura microssegundos). Uma rajada de bordas (o sensor passando devagar pelo ponto de virada, ou o ruído de 60 Hz da rede, que vira o pino a cada ~8 ms) conta no máximo uma vez. Conta até ~70 Hz (≈ 30 m/s no modelo de referência) enquanto o ímã fica na frente do sensor por menos de ~4 ms a cada pulso.
+- **Pluviômetro:** interrupção nas duas bordas; um nível novo só vale depois de 10 ms sem bordas (os `delayed_on`/`delayed_off` do pluviômetro de referência). Conta cada mudança confirmada (`rain_edge=change`) ou só as descidas (`falling`). A interrupção confirma o nível anterior a cada borda, e o laço principal confirma o último.
+- Filtros em `firmware/src/core/pulse_filter.h`, com testes nativos.
 - **Rajada:** a cada 1 s soma os pulsos daquele segundo; mantém a soma móvel dos últimos 3 s; `gust_p` é a maior soma do intervalo (rajada de 3 s, padrão OMM).
 - **BME280:** modo forçado, oversampling ×1 e filtro desligado (modo "weather monitoring" da Bosch), uma leitura no fim de cada intervalo.
 - **HTU21D:** medição sem "hold master" (temperatura com 14 bits, umidade com 12 bits), com conferência do CRC de cada resposta; uma leitura no fim de cada intervalo. Não mede pressão: `pres` vai `null`.
@@ -959,7 +965,7 @@ Cada fase termina com testes passando, `CLAUDE.md` atualizado e commit.
 | CGNAT no servidor local | Verificação no guia; a VPS é a alternativa |
 | MQTT sem TLS na internet (decisão do usuário) | Na VPS: credencial e ACL por estação, senhas aleatórias com rotação pelo painel, logins internos fora da internet. Caminho para o TLS na §3.10 |
 | Login único do broker de casa (decisão do usuário) | Risco registrado na §3.10; a VPS volta ao login por estação. Alternativa testada para casa: `acl_file` + Dynamic Security no broker (§13) |
-| Basculadas falsas com o 49E | Reed switch ou DRV5032, mais debounce |
+| Pulsos falsos com o 49E | Filtros de 10 ms das referências (§4.2); KY-024, reed switch ou DRV5032 no lugar do 49E solto |
 | Calibração imprecisa | Fatores no servidor e guia (chuva: seringa com volume conhecido; vento: carro em dia calmo ou comparação com estação oficial) |
 | Autonomia da bateria | Perfis automáticos e alertas de bateria |
 | Aquecimento do BME280 | Abrigo ventilado, longe do ESP |

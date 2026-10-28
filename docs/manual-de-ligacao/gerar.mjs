@@ -79,8 +79,11 @@ function board(ox, oy, used = {}) {
 
 function wire(points, color, { dashed = false } = {}) {
   const d = points.map(([x, y], i) => `${i ? 'L' : 'M'}${x} ${y}`).join(' ');
-  const [sx, sy] = points[0];
-  const [ex, ey] = points[points.length - 1];
+  return wirePath(d, points[0], points[points.length - 1], color, { dashed });
+}
+
+/** A wire along any SVG path `d`, from `start` to `end` (a hop over another wire needs an arc). */
+function wirePath(d, [sx, sy], [ex, ey], color, { dashed = false } = {}) {
   const dash = dashed ? ' stroke-dasharray="8 6"' : '';
   return `<path d="${d}" class="halo"/>
     <path d="${d}" fill="none" stroke="${color}" stroke-width="3.4" stroke-linejoin="round" stroke-linecap="round"${dash}/>
@@ -282,6 +285,166 @@ function bucket(y) {
     <text x="56" y="${cy + 30}" text-anchor="middle" class="note">báscula com ímã</text>`;
 }
 
+/** KY-024 board (49E with an LM393 comparator) wired to `signal`, the rotor beside its sensor. */
+function ky024Diagram(signal, color) {
+  const ox = 380;
+  const oy = 20;
+  const [sx, sy] = pinAt(ox, oy, signal);
+  const [vx, vy] = pinAt(ox, oy, '3V3');
+  const [gx, gy] = pinAt(ox, oy, 'G');
+  const ky = breakout({
+    x: 110,
+    y: sy - 24,
+    w: 140,
+    h: 114,
+    fill: '#8f2430',
+    title: 'KY-024',
+    subtitle: '49E + comparador',
+    pins: ['DO', '+', 'G', 'AO'],
+    side: 'right',
+    firstPinY: sy,
+    dimmed: ['AO'],
+  });
+  const below = oy + 258;
+  // The potentiometer that sets the switching point, and the 49E bent over the board's edge.
+  const pot = `<rect x="124" y="${sy + 34}" width="22" height="22" rx="2" fill="#2f6db5" stroke="#1d4a80"/>
+    <circle cx="135" cy="${sy + 45}" r="6.5" fill="#d6dce2"/>
+    <path d="M131 ${sy + 45}h8M135 ${sy + 41}v8" stroke="#5c6773" stroke-width="1.6"/>
+    <text x="152" y="${sy + 49}" class="modsub">ajuste</text>`;
+  const cy = sy + 20;
+  const head = `<path d="M104 ${cy - 7}h6M104 ${cy}h6M104 ${cy + 7}h6" stroke="#9aa3ac" stroke-width="2"/>
+    <rect x="90" y="${cy - 12}" width="14" height="24" rx="3" fill="#2b2f36"/>`;
+  const body = [
+    board(ox, oy, { [signal]: color, '3V3': C.v33, G: C.gnd }),
+    ky.svg,
+    pot,
+    rotor(sy),
+    head,
+    wire([[sx, sy], ky.at.DO], color),
+    wire([[vx, vy], [330, vy], [330, ky.at['+'][1]], ky.at['+']], C.v33),
+    wire(
+      [[gx, gy], [gx + 22, gy], [gx + 22, below], [300, below], [300, ky.at.G[1]], ky.at.G],
+      C.gnd,
+    ),
+    tag(322, sy, 'sinal', color),
+    tag(290, ky.at['+'][1], '3,3 V', C.v33),
+    tag(440, below, 'GND', C.gnd),
+    `<text x="262" y="${ky.at.AO[1] + 4}" class="note">solto</text>`,
+  ].join('');
+  return svg(640, 296, body, `Ligação da placa KY-024 ao pino ${signal}`);
+}
+
+/**
+ * The bare 49E powered from 5V, with a divider on its output (1 kΩ in series, 10 kΩ to ground): it
+ * puts the pin's switching point between the resting level and the weakest magnet.
+ */
+function bare49eDiagram() {
+  const ox = 380;
+  const oy = 20;
+  const [sx, sy] = pinAt(ox, oy, 'D6');
+  const [gx, gy] = pinAt(ox, oy, 'G');
+  const [fx, fy] = pinAt(ox, oy, '5V');
+  // The flat face, with the text, toward the reader and the legs turned right: OUT, GND, VCC.
+  const legs = [
+    ['OUT', sy],
+    ['GND', sy + 22],
+    ['VCC', sy + 44],
+  ];
+  const top = sy - 14;
+  const bottom = sy + 58;
+  const sensor = `<path d="M144 ${top}H190V${bottom}H144L136 ${bottom - 8}V${top + 8}Z" fill="#2b2f36"/>
+    <text transform="rotate(-90 151 ${sy + 22})" x="151" y="${sy + 26}" text-anchor="middle" class="ic">49E</text>
+    ${legs.map(([name, y]) => `<path d="M190 ${y}H214" stroke="#9aa3ac" stroke-width="2.4"/>${pad(214, y)}<text x="187" y="${y + 3.5}" text-anchor="end" class="legname">${name}</text>`).join('')}`;
+  const [, groundY] = legs[1];
+  const [, supplyY] = legs[2];
+  const series = `<rect x="258" y="${sy - 7}" width="40" height="14" rx="3" fill="#efe1c2" stroke="${C.sense}" stroke-width="1.4"/>
+    <rect x="265" y="${sy - 7}" width="3" height="14" fill="#8a5a2b"/><rect x="271" y="${sy - 7}" width="3" height="14" fill="#1f2933"/>
+    <rect x="277" y="${sy - 7}" width="3" height="14" fill="#c62828"/><rect x="289" y="${sy - 7}" width="3" height="14" fill="#c99200"/>
+    <text x="278" y="${sy - 14}" text-anchor="middle" class="callout-label">1 kΩ</text>`;
+  const node = 340;
+  const pullDown = `<rect x="${node - 7}" y="${sy + 18}" width="14" height="40" rx="3" fill="#efe1c2" stroke="${C.sense}" stroke-width="1.4"/>
+    <rect x="${node - 7}" y="${sy + 24}" width="14" height="3" fill="#8a5a2b"/><rect x="${node - 7}" y="${sy + 30}" width="14" height="3" fill="#1f2933"/>
+    <rect x="${node - 7}" y="${sy + 36}" width="14" height="3" fill="#e0700b"/><rect x="${node - 7}" y="${sy + 49}" width="14" height="3" fill="#c99200"/>
+    <text x="${node - 14}" y="${sy + 42}" text-anchor="end" class="callout-label">10 kΩ</text>`;
+  const capX = 240;
+  const capacitor = `<path d="M${capX} ${groundY}V${groundY + 6}M${capX} ${supplyY - 6}V${supplyY}" stroke="#7d8791" stroke-width="1.6"/>
+    <ellipse cx="${capX}" cy="${groundY + 11}" rx="7" ry="5.5" fill="#e0a030" stroke="#9a6a12"/>
+    <text x="${capX}" y="${sy + 14}" text-anchor="middle" class="note">100 nF</text>`;
+  const groundBelow = oy + 258;
+  const supplyBelow = oy + 276;
+  const hop = gx + 22;
+  const supplyPath = `M214 ${supplyY}H272V${supplyBelow}H590V${fy}H${hop + 6}A6 6 0 0 0 ${hop - 6} ${fy}H${fx}`;
+  const body = [
+    board(ox, oy, { D6: C.wind, G: C.gnd, '5V': C.bat }),
+    sensor,
+    wire(
+      [
+        [214, groundY],
+        [290, groundY],
+        [290, groundBelow],
+        [hop, groundBelow],
+        [hop, gy],
+        [gx, gy],
+      ],
+      C.gnd,
+    ),
+    wirePath(supplyPath, [214, supplyY], [fx, fy], C.bat),
+    capacitor,
+    wire(
+      [
+        [214, sy],
+        [sx, sy],
+      ],
+      C.wind,
+    ),
+    series,
+    wire(
+      [
+        [node, sy],
+        [node, sy + 18],
+      ],
+      C.wind,
+    ),
+    wire(
+      [
+        [node, sy + 58],
+        [node, groundBelow],
+      ],
+      C.gnd,
+    ),
+    pullDown,
+    tag(420, groundBelow, 'GND', C.gnd),
+    tag(480, supplyBelow, '5 V', C.bat),
+  ].join('');
+  return svg(640, 316, body, 'Ligação do 49E solto, alimentado pelo 5V, ao pino D6, com o divisor');
+}
+
+/** The 49E's legs seen from the face with the text, and the magnet passing in front of it. */
+function hallPinoutDiagram() {
+  const legs = [
+    ['VCC', 118, 92, C.bat],
+    ['GND', 130, 130, C.gnd],
+    ['OUT', 142, 168, C.wind],
+  ];
+  const front = `<text x="130" y="16" text-anchor="middle" class="note">face com o texto para você</text>
+    <path d="M118 30H142L150 38V84H110V38Z" fill="#2b2f36"/>
+    <text x="130" y="62" text-anchor="middle" class="ic">49E</text>
+    ${legs.map(([name, x, end, color], i) => `<path d="M${x} 84V96L${end} 116V128" fill="none" stroke="#9aa3ac" stroke-width="2.4"/><circle cx="${end}" cy="132" r="5" fill="${color}"/><text x="${end}" y="152" text-anchor="middle" class="callout-label">${i + 1} ${name}</text>`).join('')}
+`;
+  const side = `<text x="470" y="16" text-anchor="middle" class="note">visto de lado</text>
+    <rect x="392" y="52" width="24" height="26" fill="${C.sda}"/><rect x="416" y="52" width="24" height="26" fill="${C.v33}"/>
+    <text x="404" y="70" text-anchor="middle" class="modtitle">S</text><text x="428" y="70" text-anchor="middle" class="modtitle">N</text>
+    <text x="416" y="94" text-anchor="middle" class="note">ímã</text>
+    <path d="M470 40H482A20 25 0 0 1 482 90H470Z" fill="#2b2f36"/>
+    <path d="M478 90V132" stroke="#9aa3ac" stroke-width="2.4"/>
+    <text x="474" y="33" text-anchor="end" class="note">face com o texto</text>
+    <path d="M470 36V40" stroke="#5c6773" stroke-width="1.2"/>
+    <path d="M442 104H468" stroke="#5c6773" stroke-width="1.2"/><path d="M442 100V108M468 100V108" stroke="#5c6773" stroke-width="1.2"/>
+    <text x="455" y="122" text-anchor="middle" class="note">1 a 2 mm</text>
+    <text x="470" y="152" text-anchor="middle" class="callout-label">polo norte voltado para o sensor</text>`;
+  return svg(640, 160, front + side, 'Pernas do 49E e posição do ímã');
+}
+
 function powerDiagram() {
   const ox = 100;
   const oy = 30;
@@ -463,6 +626,8 @@ svg .tag { font-size: 10.5px; font-weight: 650; fill: #1f2933; }
 svg .note { font-size: 10px; font-weight: 500; fill: #5c6773; }
 svg .callout-label { font-size: 11px; font-weight: 620; fill: #1f2933; }
 svg .callout-label.idle { fill: #8a95a1; font-weight: 500; }
+svg .ic { font-size: 12px; font-weight: 700; fill: #e9edf1; }
+svg .legname { font-size: 9px; font-weight: 650; fill: #e9edf1; }
 </style>
 </head>
 <body>
@@ -470,14 +635,14 @@ svg .callout-label.idle { fill: #8a95a1; font-weight: 500; }
 <section>
   <h1>Manual de ligação<br>dos sensores</h1>
   <p class="lead">Estação Meteorológica com Wemos D1 mini (ESP8266). Vale para as duas versões: a completa, com BME280, e a com HTU21D.</p>
-  <p class="meta">Revisão de 23 de outubro de 2026, para o firmware 1.0.0. Os desenhos mostram a placa vista de cima, com a antena para cima e o USB para baixo.</p>
+  <p class="meta">Revisão de 27 de outubro de 2026, para o firmware 1.0.0. Os desenhos mostram a placa vista de cima, com a antena para cima e o USB para baixo.</p>
 
   <div class="box">
     <h3>Antes de começar</h3>
     <ul>
       <li>Faça todas as ligações com a placa desligada: sem o cabo USB e sem a bateria.</li>
       <li>Tenha à mão ferro de solda, multímetro, fios finos (ou jumpers) e termo-retrátil.</li>
-      <li>Todos os sensores funcionam em 3,3 V: alimente-os pelos pinos <b>3V3</b> e <b>G</b> do D1 mini. Vários fios no mesmo pino podem ser unidos com um borne pequeno ou com solda.</li>
+      <li>Todos os sensores funcionam em 3,3 V: alimente-os pelos pinos <b>3V3</b> e <b>G</b> do D1 mini. A exceção é o 49E solto, que vai no <b>5V</b>. Vários fios no mesmo pino podem ser unidos com um borne pequeno ou com solda.</li>
     </ul>
   </div>
   <div class="box danger">
@@ -493,11 +658,12 @@ svg .callout-label.idle { fill: #8a95a1; font-weight: 500; }
       <tr><td>${swatch(C.scl)}SCL</td><td class="pin">D1</td><td>5</td></tr>
       <tr><td>${swatch(C.sda)}SDA</td><td class="pin">D2</td><td>4</td></tr>
       <tr><td rowspan="3">Anemômetro<br>(sensor Hall)</td><td>${swatch(C.v33)}VCC (ou +)</td><td class="pin">3V3</td><td></td></tr>
-      <tr><td>${swatch(C.gnd)}GND (ou −)</td><td class="pin">G</td><td></td></tr>
+      <tr><td>${swatch(C.gnd)}GND (ou −, G)</td><td class="pin">G</td><td></td></tr>
       <tr><td>${swatch(C.wind)}OUT (ou S, DO)</td><td class="pin">D6</td><td>12</td></tr>
       <tr><td rowspan="3">Pluviômetro<br>(sensor Hall)</td><td>${swatch(C.v33)}VCC (ou +)</td><td class="pin">3V3</td><td></td></tr>
-      <tr><td>${swatch(C.gnd)}GND (ou −)</td><td class="pin">G</td><td></td></tr>
+      <tr><td>${swatch(C.gnd)}GND (ou −, G)</td><td class="pin">G</td><td></td></tr>
       <tr><td>${swatch(C.rain)}OUT (ou S, DO)</td><td class="pin">D5</td><td>14</td></tr>
+      <tr><td>49E solto</td><td>${swatch(C.bat)}VCC no 5V; OUT por 1 kΩ, e 10 kΩ para o G</td><td class="pin">D6 ou D5</td><td>12 ou 14</td></tr>
       <tr><td rowspan="2">Carregador TP4056</td><td>${swatch(C.bat)}OUT+</td><td class="pin">5V</td><td></td></tr>
       <tr><td>${swatch(C.gnd)}OUT−</td><td class="pin">G</td><td></td></tr>
       <tr><td>Medição da bateria</td><td>${swatch(C.sense)}+ da bateria, passando por um resistor de 100 kΩ</td><td class="pin">A0</td><td>ADC</td></tr>
@@ -523,7 +689,7 @@ svg .callout-label.idle { fill: #8a95a1; font-weight: 500; }
       <h3>Alimentação</h3>
       <ul>
         <li><b>3V3</b> sai do regulador da placa e alimenta os sensores.</li>
-        <li><b>5V</b> é a entrada do regulador: recebe a bateria pelo carregador (OUT+). Com o USB ligado, vem do USB.</li>
+        <li><b>5V</b> é a entrada do regulador: recebe a bateria pelo carregador (OUT+). Com o USB ligado, vem do USB. O 49E solto também é alimentado por ele.</li>
         <li><b>G</b> é o terra (GND) comum de tudo.</li>
       </ul>
     </div>
@@ -573,12 +739,13 @@ svg .callout-label.idle { fill: #8a95a1; font-weight: 500; }
   <h3>Sobre os sensores Hall (vale também para o pluviômetro)</h3>
   <div class="cols">
     <ul>
-      <li><b>Use um Hall digital</b>, com saída que só liga e desliga. Num módulo de 4 pinos (AO, G, +, DO), ligue o <b>DO</b>.</li>
-      <li><b>Alimente pelo 3V3, nunca pelo 5V:</b> no 5V a saída pode chegar a 5 V, acima do que o ESP8266 aceita.</li>
+      <li><b>Use um sensor que só liga e desliga:</b> Hall digital, reed switch ou a placa KY-024 (49E com comparador, a dos modelos de referência). Num módulo de 4 pinos (AO, G, +, DO), ligue o <b>DO</b>.</li>
+      <li><b>Alimente pelo 3V3, nunca pelo 5V:</b> no 5V a saída pode chegar a 5 V, acima do que o ESP8266 aceita. A exceção é o 49E solto, que tem página própria.</li>
       <li><b>A3144 (módulo KY-003):</b> é especificado a partir de 4,5 V. Muitas vezes funciona em 3,3 V, mas teste antes de instalar. Se falhar, use um Hall de 3,3 V e baixo consumo (como o DRV5032) ou um reed switch, que liga do mesmo jeito.</li>
     </ul>
     <ul>
       <li><b>Sem resistor:</b> o firmware liga o pull-up interno do pino.</li>
+      <li><b>Filtro:</b> um pulso só conta depois de 10 ms sem nenhuma mudança no pino, como no ESPHome. Repiques e ruído não viram vento.</li>
       <li><b>Retire o LED do módulo:</b> ele gasta bateria e, em alguns módulos, inverte o sinal.</li>
       <li><b>Polo do ímã:</b> muitos Hall reagem a um polo só. Se não contar, vire o ímã. Deixe poucos milímetros entre ímã e sensor.</li>
       <li><b>Calibração:</b> o modelo de referência (3 ímãs, raio de 80 mm) dá 0,42 m/s por Hz, o padrão do painel. Para outros, use a calculadora do painel e o <code>docs/calibracao.md</code>.</li>
@@ -599,10 +766,58 @@ svg .callout-label.idle { fill: #8a95a1; font-weight: 500; }
     </tbody>
   </table>
   <ul>
-    <li>Valem as mesmas regras do sensor Hall do anemômetro: digital, alimentado pelo 3V3, sem LED e com o polo certo do ímã.</li>
+    <li>Valem as mesmas regras do sensor Hall do anemômetro: digital ou KY-024, alimentado pelo 3V3, sem LED e com o polo certo do ímã. Uma mudança do sensor só conta depois de durar 10 ms, como no pluviômetro de referência.</li>
     <li><b>Contagem da báscula:</b> o padrão conta cada mudança de estado do sensor, como nos modelos de referência. Se a chuva aparecer em dobro ou pela metade, troque para "só na borda de descida" em <b>Cadastro de estações → (estação) → Configuração remota</b>.</li>
     <li><b>Calibração:</b> despeje um volume conhecido de água devagar e compare com o total contado. O passo a passo está em <code>docs/calibracao.md</code>.</li>
     <li>Instale o pluviômetro nivelado, longe de árvores, paredes e do respingo do telhado.</li>
+  </ul>
+</section>
+
+<section>
+  <h2>Placa KY-024: o 49E com comparador</h2>
+  <p class="intro">É a placa dos modelos de referência. O 49E sozinho é analógico: a tensão de saída muda aos poucos com o ímã. O comparador da placa (LM393) transforma essa tensão num sinal liga/desliga limpo, e o potenciômetro escolhe o ponto de virada. Serve para o anemômetro (D6) e para o pluviômetro (D5).</p>
+  <figure>${ky024Diagram('D6', C.wind)}<figcaption>No pluviômetro, a ligação é a mesma, no D5. O AO, a saída analógica, fica solto.</figcaption></figure>
+  <table>
+    <thead><tr><th>Fio</th><th>Na KY-024</th><th>No D1 mini</th></tr></thead>
+    <tbody>
+      <tr><td>${swatch(C.v33)}3,3 V</td><td>+</td><td class="pin">3V3</td></tr>
+      <tr><td>${swatch(C.gnd)}GND</td><td>G</td><td class="pin">G</td></tr>
+      <tr><td>${swatch(C.wind)}Sinal</td><td>DO</td><td class="pin">D6 (vento) ou D5 (chuva)</td></tr>
+      <tr><td></td><td>AO</td><td>solto</td></tr>
+    </tbody>
+  </table>
+  <div class="cols">
+    <ul>
+      <li><b>Alimente pelo 3V3.</b> Assim a saída DO não passa de 3,3 V, e não precisa de resistor nem de diodo.</li>
+      <li><b>Ajuste o potenciômetro</b> com a placa ligada: o LED da saída deve apagar sem ímã e acender só com o ímã bem na frente do sensor. Se ele acender com o ímã longe, a contagem fica instável.</li>
+    </ul>
+    <ul>
+      <li><b>A face com o texto do 49E</b> fica voltada para os ímãs. Se o LED não acender, vire o ímã.</li>
+      <li><b>Consumo:</b> o sensor, o comparador e os LEDs gastam alguns mA o tempo todo. Numa estação a bateria, prefira um reed switch ou um Hall digital de baixo consumo.</li>
+      <li><b>Teste:</b> no log serial, 10 voltas do rotor dentro de um minuto devem dar 30 pulsos.</li>
+    </ul>
+  </div>
+</section>
+
+<section>
+  <h2>49E solto, sem placa: no 5V, com divisor</h2>
+  <p class="intro">Sem o comparador da KY-024, a saída do 49E vai direto no pino, e os ímãs mal chegam ao ponto em que o pino muda de estado (~1,65 V). Dois resistores põem esse ponto no meio do caminho. Prefira a KY-024, um reed switch ou um Hall digital.</p>
+  <figure>${bare49eDiagram()}<figcaption>Desenho do anemômetro, no D6; no pluviômetro, a mesma ligação vai no D5. O fio do 5V passa por cima do GND sem se ligar a ele.</figcaption></figure>
+  <figure>${hallPinoutDiagram()}<figcaption>O ímã passa na frente da face com o texto, a 1 ou 2 mm, com o polo norte voltado para ela. Se não contar, vire o ímã.</figcaption></figure>
+  <table>
+    <thead><tr><th style="width:20%">Perna do 49E</th><th style="width:18%">No D1 mini</th><th>Observação</th></tr></thead>
+    <tbody>
+      <tr><td>${swatch(C.bat)}1, VCC</td><td class="pin">5V</td><td>Capacitor de 100 nF entre VCC e GND, colado no sensor</td></tr>
+      <tr><td>${swatch(C.gnd)}2, GND</td><td class="pin">G</td><td></td></tr>
+      <tr><td>${swatch(C.wind)}3, OUT</td><td class="pin">D6 ou D5</td><td>Por um resistor de 1 kΩ (marrom, preto, vermelho), com outro de 10 kΩ (marrom, preto, laranja) do pino para o G</td></tr>
+    </tbody>
+  </table>
+  <div class="box warn">
+    <p><b>Ajuste na alimentação definitiva:</b> meça entre o pino e o G, sem ímã e com cada ímã parado na frente do sensor. Sem ímã, acima de ~1,95 V; com o ímã mais fraco, abaixo de ~1,5 V. Pelo USB (~4,4 V no pino 5V), a bancada deu 2,0 V e de 1,24 a 1,50 V. Numa fonte de 5,0 V, troque o 1 kΩ por uns 3,3 kΩ. Ímã fraco demais: aumente esse resistor; tensão sem ímã baixa demais: diminua.</p>
+  </div>
+  <ul>
+    <li><b>Nunca em 3,3 V:</b> a placa reinicia sem parar (<code>Soft WDT reset</code>). <b>Teste no log:</b> 10 voltas dão 30 pulsos; rotor parado, 0.</li>
+    <li><b>Proteção opcional:</b> diodo Schottky do pino para o 3V3, com a faixa no 3V3, contra um ímã com o polo sul. Com a faixa no pino, nada conta.</li>
   </ul>
 </section>
 
@@ -671,7 +886,7 @@ svg .callout-label.idle { fill: #8a95a1; font-weight: 500; }
     <li>Com a placa desligada, use o multímetro em continuidade: <b>3V3 e G não podem estar em curto</b>, nem 5V e G.</li>
     <li>Ligue só pelo USB, sem a bateria no 5V. No log serial (115200 baud), procure a linha <code>sensor de clima: bme280</code> (ou <code>htu21d</code>).</li>
     <li>No painel, a estação aparece online e a leitura de cada minuto traz temperatura e umidade, e também pressão na versão completa.</li>
-    <li>Gire o anemômetro com a mão: o vento sobe na leitura do minuto seguinte.</li>
+    <li>Gire o anemômetro com a mão: o vento sobe na leitura do minuto seguinte. No log serial, 10 voltas dentro de um minuto dão 30 pulsos.</li>
     <li>Vire a báscula algumas vezes: a chuva soma a cada basculada.</li>
     <li>Com a bateria e o resistor ligados, e o USB desconectado, compare a tensão de <b>Energia e sinal</b> com o multímetro e calibre.</li>
   </ol>
@@ -682,7 +897,9 @@ svg .callout-label.idle { fill: #8a95a1; font-weight: 500; }
     <thead><tr><th style="width:31%">Sintoma</th><th style="width:32%">Causa provável</th><th>O que fazer</th></tr></thead>
     <tbody>
       <tr><td>O log mostra <code>sensor de clima: none</code></td><td>SDA e SCL trocados, alimentação solta ou um BMP280 no lugar do BME280</td><td>Confira D1 = SCL e D2 = SDA e meça 3,3 V entre VIN e GND do sensor</td></tr>
-      <tr><td>Vento ou chuva sempre em zero</td><td>Hall sem alimentação ou que não funciona em 3,3 V, ímã com o polo errado, fio no pino errado</td><td>Meça a saída do Hall passando o ímã; vire o ímã; confira D6 e D5</td></tr>
+      <tr><td>Vento ou chuva sempre em zero</td><td>Hall sem alimentação ou que não funciona em 3,3 V, ímã com o polo errado, fio no pino errado, potenciômetro da KY-024 desajustado</td><td>Meça a saída do Hall passando o ímã; vire o ímã; confira D6 e D5; na KY-024, ajuste até o LED acender com o ímã na frente</td></tr>
+      <tr><td>Com o 49E solto, só um ou dois ímãs contam, ou eles contam a mais</td><td>O sinal mal chega ao ponto de virada do pino</td><td>Ajuste o divisor, como na página do 49E solto</td></tr>
+      <tr><td>A placa reinicia sem parar (<code>Soft WDT reset</code>) e o sensor de clima some</td><td>49E solto alimentado em 3,3 V: a saída parada fica no ponto de virada do pino</td><td>Use a KY-024, ou ligue o 49E solto no 5V, como na página dele</td></tr>
       <tr><td>Chuva em dobro ou pela metade</td><td>Modo de contagem da báscula</td><td>Troque a "Contagem da báscula" na configuração remota</td></tr>
       <tr><td>Bateria "não medida" no painel</td><td>Falta o resistor no A0, ou ele está ligado no lugar errado</td><td>Ligue o + da bateria ao A0 pelo resistor de 100 kΩ</td></tr>
       <tr><td>A estação some e não volta no perfil Sobrevivência</td><td>Falta o fio D0–RST: o deep sleep nunca termina</td><td>Ligue o D0 ao RST; para acordar agora, aperte o RESET</td></tr>

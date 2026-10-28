@@ -23,7 +23,7 @@ O firmware é o mesmo nas duas: no boot ele procura o BME280 e, se não achar, o
 | BME280 **ou** HTU21D | I²C, 3,3 V |
 | Anemômetro de conchas | Modelo de referência: MakerWorld (SoftWareCrash), 3 ímãs, raio de 80 mm |
 | Pluviômetro de báscula | Modelo de referência: MakerWorld (laisch), 0,64 mm por basculada |
-| 2 sensores de pulso | Reed switch (consumo zero) ou Hall **digital** de baixo consumo (ex.: DRV5032). O Hall 49E não é recomendado |
+| 2 sensores de pulso | Reed switch (consumo zero), Hall **digital** de baixo consumo (ex.: DRV5032) ou o módulo **KY-024** (49E com comparador), o dos modelos de referência. O 49E solto não é recomendado (veja "Sensores de pulso") |
 | Célula 18650 (Li-ion) e suporte | |
 | Carregador TP4056 **com proteção** (DW01) | Também protege contra descarga profunda |
 | Painel solar 5–6 V, 1–3 W | Opcional |
@@ -41,7 +41,7 @@ Para imprimir e levar para a bancada: [`manual-de-ligacao.pdf`](manual-de-ligaca
 | Sensor de clima VCC / GND | 3V3 / G | — | BME280 ou HTU21D (só um) |
 | Sensor de clima SDA | D2 | 4 | |
 | Sensor de clima SCL | D1 | 5 | |
-| Pluviômetro | D5 | 14 | O outro fio do sensor vai ao GND (entrada com pull-up) |
+| Pluviômetro | D5 | 14 | Reed switch, Hall digital ou KY-024 (veja "Sensores de pulso"); entrada com pull-up |
 | Anemômetro | D6 | 12 | Idem |
 | Bateria (+), passando pelo resistor de 100 kΩ | A0 | — | Com o divisor interno da placa, o fundo de escala fica em ~4,2 V |
 | D0 ligado ao RST | D0 | 16 | **Obrigatório** para o perfil Sobrevivência: sem ele a placa não acorda |
@@ -60,6 +60,37 @@ Para imprimir e levar para a bancada: [`manual-de-ligacao.pdf`](manual-de-ligaca
 ```
 
 Retire os LEDs das plaquinhas dos sensores de pulso: além de gastar bateria, alguns invertem o sinal.
+
+### Sensores de pulso
+
+O anemômetro (D6) e o pluviômetro (D5) aceitam qualquer um destes. As ligações valem para os dois pinos.
+
+| Sensor | Ligação | Observação |
+|---|---|---|
+| Reed switch | Um fio no D5 ou D6, o outro no **G** | Não gasta nada: o melhor para bateria |
+| Hall digital de 3,3 V (DRV5032) | VCC no **3V3**, GND no **G**, OUT no D5 ou D6 | Baixo consumo |
+| Módulo KY-024 (49E com comparador LM393) | **+** no **3V3**, **G** no **G**, **DO** no D5 ou D6; o AO fica solto | O dos modelos de referência. Em 3,3 V, a saída DO não passa de 3,3 V. Ajuste o potenciômetro até o LED da saída acender só com o ímã bem na frente. Gasta alguns mA o tempo todo |
+| 49E solto | VCC no **5V**, GND no **G**, OUT no D5 ou D6 passando por **1 kΩ**, com **10 kΩ** do pino para o **G** (divisor), e 100 nF entre VCC e GND, colado no sensor | Último recurso: só com 5 V estáveis e com o divisor ajustado à alimentação. Detalhes abaixo |
+
+**Por que o 49E solto dá trabalho:** ele é analógico, e a saída varia aos poucos com o campo do ímã. No KY-024, o comparador transforma essa tensão num sinal liga/desliga limpo. Sem o comparador, quem decide é o próprio pino do D1 mini:
+- **Em 3,3 V,** a saída em repouso (~1,65 V) cai bem no ponto de virada do pino. A enxurrada de interrupções reinicia a placa (`Soft WDT reset`) e atrapalha o I²C.
+- **Em 5 V, sem divisor,** os ímãs mal passam do ponto de virada (~1,65 V). Na bancada, pelo USB (~4,4 V no pino 5V), a saída ficava em 2,19 V parada e ia a 1,30, 1,64 e 1,51 V com os três ímãs do rotor. Um só ímã contava certo; com o ímã devagar, o ruído na virada (inclusive os 60 Hz da rede, pelo USB do computador) contava a mais.
+- **Com o divisor** (1 kΩ em série, 10 kΩ do pino para o G), tudo cai ~9%: 2,01 V parada e de 1,24 a 1,50 V com os ímãs. O ponto de virada fica no meio do caminho, e a bancada deu 30 pulsos em 10 voltas e zero com o rotor parado.
+- **Ajuste à alimentação:** a saída do 49E acompanha a tensão do 5V. Na alimentação definitiva, meça o pino contra o G: sem ímã, precisa ficar acima de ~1,95 V; com o ímã mais fraco, abaixo de ~1,5 V. Numa fonte de 5,0 V, troque o 1 kΩ por uns 3,3 kΩ. Ímã fraco demais: aumente o resistor de série; tensão sem ímã baixa demais: diminua.
+- **Um diodo em série no lugar do 1 kΩ** baixa a tensão de uma vez. O de silício (1N4148, 1N4007, ~0,55 V) baixou demais: a tensão parada caiu para 1,62 V, no ponto de virada.
+- **Proteção opcional:** o polo sul leva a saída a ~4 V. Um diodo Schottky do pino para o 3V3, com a faixa no 3V3, segura o pino. Com a faixa no pino, ele prende o pino em nível alto (~2,7 V) e nada conta.
+
+**Filtros do firmware** (iguais aos dos modelos de referência):
+- **Anemômetro:** cada borda reinicia o filtro, e um pulso só conta depois de 10 ms sem bordas. É a regra do `pulse_counter` do ESPHome. Conta até ~30 m/s no modelo de referência.
+- **Pluviômetro:** uma mudança só vale depois de durar 10 ms. São os `delayed_on`/`delayed_off` do pluviômetro de referência.
+
+Na bancada, o log serial mostra os pulsos de cada leitura:
+
+```
+[wx] leitura 35: vento 30 pulsos em 60 s (rajada de 3 s: 9), contador da chuva 4
+```
+
+Com 3 ímãs no rotor, 10 voltas dentro de um minuto devem dar 30 pulsos. O contador da chuva é o total desde que a placa ligou.
 
 ## Alimentação
 
@@ -143,7 +174,7 @@ Roteiro para validar o firmware com a placa de verdade, publicando no ambiente d
 4. Confira, no monitor serial e no painel:
    - [ ] A estação aparece **Online** e o log mostra o sensor detectado (`sensor de clima: bme280` ou `htu21d`).
    - [ ] Chega uma leitura por minuto, com temperatura e umidade coerentes (e pressão na versão completa).
-   - [ ] Girar o anemômetro com a mão aumenta o vento; virar a báscula soma chuva.
+   - [ ] Girar o anemômetro com a mão aumenta o vento; virar a báscula soma chuva. No log serial, 10 voltas dentro de um minuto dão 30 pulsos (3 ímãs), e com o rotor parado, em qualquer posição, 0.
    - [ ] **Dispositivos** mostra bateria, sinal e memória livre (anote o valor de "Memória livre": é a folga de RAM).
    - [ ] O comando **Piscar o LED** pisca o LED da placa por 30 s; **Reiniciar** reinicia uma vez só.
    - [ ] Mudar o intervalo na **Configuração remota** gera "Configuração aplicada" nos logs.
@@ -169,4 +200,7 @@ O log serial (`pio device monitor`, 115200 baud) mostra para onde a estação te
 | A página do portal não abre sozinha | DNS privado fixo no celular ou dados móveis ligados | Veja o passo 3 de "Configurar no portal" |
 | A placa some alguns minutos depois de abrir o portal | Deep sleep sem o fio D0–RST | Aperte RESET. Na estação definitiva, ligue o fio |
 | Faltam os campos do servidor no portal | Memória insuficiente para montar a página (muitas redes por perto) | Toque em **Procurar redes de novo**. O log mostra a memória livre ao abrir o portal ("heap livre", "maior bloco") |
+| `Soft WDT reset` em sequência, e o sensor de clima some, depois de ligar um 49E | 49E solto alimentado em 3,3 V: a saída em repouso fica no ponto de virada do pino | Use o KY-024 em 3,3 V, ou alimente o 49E solto pelo 5V (veja "Sensores de pulso") |
+| Vento sempre em zero com o 49E solto | Polo errado (só o norte, voltado para a face com o texto, vira o pino), ímã longe, ou diodo de proteção com a faixa no pino | Meça o pino sem ímã e com o ímã parado na frente; vire o ímã ou o sensor; a faixa do diodo vai no 3V3 |
+| Com o 49E solto, só um ou dois ímãs contam, ou eles contam a mais | O sinal mal passa do ponto de virada do pino (~1,65 V) | Use o divisor de 1 kΩ e 10 kΩ, ajustado à alimentação (veja "Sensores de pulso"), ou o KY-024 |
 

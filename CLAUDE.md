@@ -110,7 +110,7 @@ Sistema de monitoramento de estações meteorológicas DIY (Wemos D1 mini/ESP826
 - **Simulador:** `--interval` só acelera as leituras; o monitor usa o intervalo configurado no banco (60 s). Intervalo maior que o configurado gera alerta de estação sem contato. O `--backfill` consulta a última leitura de cada estação no banco para não duplicar histórico.
 - **Firmware — testes nativos:** a máquina de dev não tem `g++` (`sudo dnf install gcc-c++` resolveria). O `scripts/test-native.sh` cai para um contêiner (`scripts/native-test.Dockerfile`: Python 3.12, g++ e PlatformIO 6.1.19), roda com o usuário da máquina e guarda os pacotes em `~/.cache/wx-pio-native`.
 - **Firmware — biblioteca MQTT:** é a 256dpi/arduino-mqtt (o design original citava a espMqttClient). O `publish` com QoS 1 bloqueia até o PUBACK (timeout de 10 s), o que garante que a leitura só sai do buffer depois da confirmação. O callback de mensagem não pode usar o cliente (risco de deadlock): `config` e `cmd` vão para uma caixa de entrada (4 × 512 bytes) tratada no loop.
-- **Firmware — RAM:** 58% de RAM estática (47,5 KB) e 53% da flash. O risco é o heap com TLS: com Max Fragment Length os buffers do BearSSL ficam em 1024 bytes; sem ele, o de entrada passa de 16 KB. Conferir a "Memória livre" em bancada (meta: acima de ~8 KB). `PIO_FRAMEWORK_ARDUINO_LWIP2_LOW_MEMORY` está ligado.
+- **Firmware — RAM:** 59,8% de RAM estática (48,9 KB) e 55% da flash (2026-10-27). O risco é o heap com TLS: com Max Fragment Length os buffers do BearSSL ficam em 1024 bytes; sem ele, o de entrada passa de 16 KB. Conferir a "Memória livre" em bancada (meta: acima de ~8 KB). `PIO_FRAMEWORK_ARDUINO_LWIP2_LOW_MEMORY` está ligado.
 - **Firmware — avisos:** `-Wall -Wextra` valem só para o código do projeto (`build_src_flags`); as bibliotecas compilam com os avisos padrão.
 - **Firmware — deep sleep:** o relógio do sistema não sobrevive; cada despertar refaz o NTP. O que precisa sobreviver fica na memória RTC (`RtcState`, até 512 bytes, com CRC32). Dois resets em até 3 s abrem o portal (flag `resetArmed` na RTC).
 - **Firmware — contrato:** `test/test_payload` compara o JSON exato. Ao mudar o contrato, confira esses JSON com os esquemas zod do `shared`: na Fase 5 isso foi feito com um teste temporário que imprime os payloads, validados por um script `tsx`.
@@ -120,6 +120,7 @@ Sistema de monitoramento de estações meteorológicas DIY (Wemos D1 mini/ESP826
   - Abrir a porta reinicia a placa, mesmo com DTR e RTS desligados no pyserial (o kernel os liga ao abrir). Um pulso no RTS é outro reset, como faz o esptool.
   - Depois de gravar, a placa às vezes abre o portal: o reset do fim da gravação e o da abertura da serial (ou dois do próprio esptool) contam como reset duplo. Um reset simples sai do portal, porque o boot que abre o portal desarma o reset duplo; ou, em 5 min sem uso, ele expira e a placa segue com a configuração salva. Para conferir sem reiniciar, não abra a serial: teste a página local por `curl` ou procure a rede `Estacao-XXXXXX`.
   - O ROM do ESP8266 imprime a 74880 baud, então as primeiras linhas saem ilegíveis a 115200.
+  - Cada leitura gera a linha `leitura N: vento P pulsos em D s (rajada de 3 s: G), contador da chuva C`, para conferir os sensores de pulso na bancada (3 ímãs: 10 voltas = 30 pulsos).
 - **Firmware — portal e memória:** o WiFiManager monta a página inteira num `String`, e o `String` do ESP8266 cresce sob medida com `realloc`. Sem um bloco contíguo, o `concat` devolve `false` e o trecho some sem erro. Com 16 redes por perto, os campos do servidor sumiram. Hoje a página tem ~7 KB com 16 redes, e o cliente MQTT só reserva os buffers no `Link::begin()`. Na bancada, o log mostrou ~19 KB livres (maior bloco ~13–19 KB) ao abrir o portal; se crescer a página, meça de novo.
 - **Firmware — página local** (`src/net/local_page.cpp`, lógica pura em `core/local_form`, `core/config_trial` e `core/html`):
   - Só no perfil Normal, com o Wi-Fi conectado (mesmo com o MQTT falhando). HTTP Basic com usuário `admin`; a senha é a `local_password` da configuração ou, antes da primeira, a do portal. Um token por boot protege os formulários contra envio por outro site.
@@ -129,6 +130,18 @@ Sistema de monitoramento de estações meteorológicas DIY (Wemos D1 mini/ESP826
   - No ESP8266, string comum fica na RAM. A página vai em pedaços a partir da flash (`PSTR`, `sendContent_P`), e as mensagens do `core` usam `WX_TEXT` (`core/flash_text.h`), que vira `PSTR` no ESP8266 e texto comum nos testes nativos. O estado do teste só é alocado durante uma alteração. Resultado: 59,4% de RAM estática.
   - Nome na rede (DHCP): `estacao-{código}`, cortado em 32 caracteres (o `WiFi.hostname()` do core recusa nomes maiores).
 - **Firmware — rede do usuário:** Wi-Fi UniFi (Ubiquiti) com a mesma rede `X` em 2,4, 5 e 6 GHz; o computador fica nos 6 GHz e o D1 mini nos 2,4 GHz, e eles se enxergam. Na primeira conexão houve conflito de IP: a placa recebeu 10.25.50.110, que um aparelho Samsung também usava (o ARP do computador apontava para o MAC dele). Na reconexão ela pegou 10.25.50.111.
+- **Firmware — sensores de pulso (2026-10-27):**
+  - Os filtros ficam em `core/pulse_filter.h`, com testes nativos, e as interrupções pegam as duas bordas.
+    - **Anemômetro:** um pulso é a primeira borda depois de 10 ms com a linha em alto, como no `pulse_counter` do ESPHome. Não depende do nível lido na interrupção, porque o mergulho de um ímã fraco dura microssegundos.
+    - **Pluviômetro:** um nível vale depois de durar 10 ms, como os `delayed_on/off` do pluviômetro de referência. A confirmação vem na borda seguinte ou no `PulseCounters::service()`, chamado pelo laço.
+  - O código chamado pela interrupção precisa estar na IRAM: os métodos dos filtros são `always_inline` (`WX_ISR_INLINE`). Para conferir, `xtensa-lx106-elf-nm -C .pio/build/d1_mini/firmware.elf | grep -E "onWindEdge|onRainEdge"` deve mostrar endereços 0x4010xxxx.
+  - O filtro antigo (2 ms e 50 ms contados a partir do último pulso, e só na descida do vento) deixava passar as rajadas de bordas do 49E solto: 2 a 4 pulsos por passagem lenta e ~60 pulsos/s com o ímã parado na virada (ruído de 60 Hz, pelo USB do computador).
+  - Os modelos de referência usam o 49E em placa com comparador: o link do anemômetro do SoftWareCrash leva à KY-024. Os PDFs e as páginas salvas ficam em `tmp/`, fora do git.
+- **Firmware — rede IoT do usuário (2026-10-27):**
+  - A placa de bancada fica na rede `IoT` (10.25.40.x, gateway 10.25.40.1) e usa o broker em 10.25.20.10:1883.
+  - O pfSense só libera o servidor para os IPs autorizados dessa rede. Depois de 6 h desligada, a placa recebeu outro IP do DHCP (.103 no lugar do .102), e o MQTT passou a dar `erro -3`.
+  - Sinais do bloqueio: em **Diagnostics → States**, a conexão saía com NAT para um endereço 100.64.x.x e ficava sem resposta, e o log do broker nem registrava a tentativa (as linhas `auto-…` de `127.0.0.1` a cada 30 s são o healthcheck do próprio broker).
+  - O usuário liberou o .103. Para não acontecer de novo, reserve no DHCP um IP fixo para o MAC da placa.
 - **Firmware — portal (WiFiManager 2.0.17):**
   - Os textos em pt-BR ficam em `firmware/include/wm_strings_pt_br.h`, escolhido por `-DWM_STRINGS_FILE`. A biblioteca é compilada à parte do projeto e só encontra o arquivo por causa do `-I include` nas `build_flags`.
   - Ao atualizar a biblioteca, compare o `wm_strings_en.h` novo com o nosso: os símbolos precisam ser os mesmos.
@@ -189,15 +202,21 @@ Sistema de monitoramento de estações meteorológicas DIY (Wemos D1 mini/ESP826
 - **Bancada com o Hall 49E (2026-10-27):** o usuário só tem o 49E puro, sem módulo.
   - Alimentado em 3,3 V, a saída em repouso (~1,65 V) cai no ponto de virada da entrada digital desta placa. O pino alterna sem parar e gera uma enxurrada de interrupções: `Soft WDT reset` em loop (a pilha decodificada mostra o `interrupt_handler`) e o HTU21D não é encontrado no I²C.
   - Alimentado em **5 V**, o repouso vai para ~2,5 V, e a placa estabiliza. Os pulsos do ímã contam: entraram como vento, no D6.
-  - Circuito recomendado ao usuário para a soldagem:
-    - 1 kΩ em série entre OUT e o pino;
-    - Schottky do pino para o 3V3, como proteção, porque com o polo sul a saída passa de 3,6 V;
-    - 100 nF no sensor;
-    - polo norte dos ímãs voltado para a face com o texto do 49E.
+  - Primeiro circuito recomendado: 1 kΩ em série, Schottky do pino para o 3V3, 100 nF no sensor, polo norte dos ímãs voltado para a face com o texto. Foi substituído pelo divisor (abaixo).
   - Só vale com 5 V estáveis (USB ou fonte). Numa célula de lítio direta, o repouso volta para perto do ponto de virada. Para a estação a bateria, o certo é um reed switch ou um Hall digital de 3,3 V (DRV5032).
-  - O HTU21D falhou duas vezes durante esses testes: mau contato nos fios provisórios, ou a saída do 49E acima de 3,3 V sem o resistor. O usuário vai soldar tudo.
+  - O HTU21D falhou duas vezes durante esses testes: mau contato nos fios provisórios, ou a saída do 49E acima de 3,3 V sem o resistor. O usuário soldou tudo, e o HTU21D continua sem ser encontrado (`sensor de clima: none`).
+  - Soldado, o 49E só contou com o ímã quase encostando. Deu 2 a 4 pulsos por toque lento e rajadas de ~60 pulsos/s com o ímã parado na virada.
+  - A histerese por software (resistor interno ligado e desligado conforme o nível, com 4,7 kΩ em série) tirou a sensibilidade, e o rotor parou de contar. Foi desfeita.
+  - Com os filtros das referências, 10 voltas davam 10 e depois 20 pulsos: só um ou dois ímãs viravam o pino. O filtro passou a contar a primeira borda depois de 10 ms em alto, sem depender do nível lido na interrupção, porque o mergulho de um ímã fraco dura microssegundos.
+  - Medidas no D6, pelo USB (~4,4 V no pino 5V): saída parada em 2,19 V; com os três ímãs, 1,30, 1,64 e 1,51 V. O ponto de virada do pino fica em ~1,65 V, então os ímãs mal passavam dele.
+  - Diodo de silício em série com 4,7 kΩ para o GND: baixou ~0,55 V, e a tensão parada caiu para 1,62 V, no ponto de virada.
+  - **O que resolveu:** divisor com 1 kΩ em série e 10 kΩ do pino para o GND. Ficou 2,01 V parado e 1,24 a 1,50 V com os ímãs. Deu 30 pulsos em 10 voltas, zero com o rotor parado e giros fortes sem reinício. Antes, um reinício por watchdog aconteceu com o ímã parado no ponto de virada (provável enxurrada de interrupções).
+  - A saída do 49E acompanha a alimentação: o divisor foi acertado para o USB. Numa fonte de 5,0 V, o resistor de série vai para ~3,3 kΩ. A recomendação para a estação definitiva continua sendo a KY-024 em 3,3 V, ou um reed switch.
 - **Pendências:**
-  - Proteção no firmware contra sinal instável nos pinos de pulso: pausar a entrada quando a taxa de pulsos for impossível e marcar o sensor com falha, em vez de travar a estação. Também, um log serial por basculada e por minuto de vento para a bancada. Foi oferecido ao usuário, que ainda não respondeu.
+  - Na alimentação definitiva, medir o pino e ajustar o divisor do 49E solto, ou trocar pela KY-024.
+  - Encontrar o problema da solda do HTU21D.
+  - Reservar no DHCP um IP fixo para a placa, na rede IoT (veja "Notas técnicas").
+  - Proteção contra a enxurrada de interrupções nos pinos de pulso: pausar a entrada quando a taxa for impossível e marcar o sensor com falha. Os filtros de 10 ms evitam a contagem falsa, mas não a carga da enxurrada (49E solto em 3,3 V). Já foi oferecida ao usuário, sem resposta.
   - Tornar o portal resistente à página cortada. Ao recarregar a página com pouca memória (maior bloco ~12 KB), os campos do servidor podem sumir, e o salvamento chega sem eles: o firmware reabre o portal com esses campos em branco.
   - Investigar o reset de watchdog visto uma vez no perfil Sobrevivência (veja "Registro", Deploy em casa).
   - No Coolify, desmarcar "Build Variable" das variáveis com senha e fazer o Redeploy (que também aplica a senha do banco fora da URL).
@@ -482,3 +501,24 @@ Sistema de monitoramento de estações meteorológicas DIY (Wemos D1 mini/ESP826
 - **Correções no firmware (bancada):**
   - **Bateria:** leitura abaixo de 2,5 V (`kMinBatteryMv`) passou a valer como "sem bateria". Sem o divisor, o ruído no A0 virava ~200 mV, e três leituras seguidas punham o perfil automático em Sobrevivência: a placa dormia sem acordar (sem o fio D0–RST) e sumia da rede.
   - **Wi-Fi:** a falha agora tem motivo no log ("recusou a senha", "não foi encontrada", "recusou a conexão", "não respondeu"). Na primeira falha de cada boot, o log mostra também como a busca vê a rede: canal, sinal e segurança.
+
+### 2026-10-27 — Bancada: 49E, filtros de pulso e manual
+- **Log da bancada:** uma linha por leitura, com os pulsos de vento, a rajada e o contador da chuva.
+- **Rede IoT:** a estação ficou sem broker quando o DHCP trocou o IP dela. O pfSense só libera IPs autorizados (veja "Notas técnicas").
+- **Pesquisa nas referências** (PDFs e páginas em `tmp/`), a pedido do usuário:
+  - os modelos usam o 49E em placa com comparador (KY-024) ou placas Hall de 5 V;
+  - o pluviômetro do MakerWorld filtra 10 ms nas duas transições;
+  - o ESPHome reinicia o filtro de pulsos a cada borda.
+- **Firmware:**
+  - filtros das referências (`core/pulse_filter.h`), com as interrupções nas duas bordas e o `service()` no laço;
+  - saiu o ambiente experimental `d1_mini_49e`;
+  - 77 testes nativos (15 novos).
+- **Filtro do vento revisto na bancada:** conta a primeira borda depois de 10 ms em alto, porque um ímã fraco faz mergulhos de microssegundos. São 77 testes nativos.
+- **49E solto:** o que funcionou foi o divisor de 1 kΩ e 10 kΩ, que deu 30 pulsos em 10 voltas (veja "Estado atual").
+- **Manual (10 páginas):**
+  - páginas novas: a da KY-024 e a do 49E solto no 5V, com o divisor, o capacitor, a pinagem, a posição do ímã e o ajuste para a alimentação;
+  - ajustes na capa, no resumo, no anemômetro, no pluviômetro, no teste e nos problemas comuns.
+- **Docs:**
+  - `docs/hardware.md` ganhou a seção "Sensores de pulso";
+  - design atualizado nas §1.4, §4.1, §4.2 e nos riscos;
+  - a pasta `tmp/` entrou no `.gitignore`.
